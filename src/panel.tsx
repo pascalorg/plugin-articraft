@@ -9,7 +9,6 @@ import {
   type DragEvent,
   type FormEvent,
   type ReactNode,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -35,7 +34,7 @@ import type {
 type Mode = 'browse' | 'generate'
 
 const ACCENT = '#ff6b3d'
-const PAGE_SIZE = 24
+const PAGE_SIZE = 16
 
 const inputStyle: CSSProperties = {
   background: 'var(--background)',
@@ -72,6 +71,7 @@ function arm(item: ArticraftCatalogItem) {
 
 export default function ArticraftPanel() {
   const [mode, setMode] = useState<Mode>('browse')
+  const content = useRef<HTMLDivElement>(null)
   const count = useScene(
     (state) =>
       Object.values(state.nodes).filter((node) => (node.type as string) === 'articraft:asset')
@@ -84,7 +84,9 @@ export default function ArticraftPanel() {
         color: 'var(--sidebar-foreground)',
         display: 'flex',
         flexDirection: 'column',
-        minHeight: '100%',
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
       }}
     >
       <header
@@ -92,6 +94,7 @@ export default function ArticraftPanel() {
           borderBottom: '1px solid var(--sidebar-border)',
           display: 'flex',
           flexDirection: 'column',
+          flex: '0 0 auto',
           gap: 13,
           padding: '15px 15px 13px',
         }}
@@ -169,12 +172,25 @@ export default function ArticraftPanel() {
         />
       </header>
 
-      <div style={{ flex: 1, padding: 15 }}>{mode === 'browse' ? <Catalog /> : <Generate />}</div>
+      <div
+        data-articraft-scroll-region
+        ref={content}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          overscrollBehavior: 'contain',
+          padding: 15,
+        }}
+      >
+        {mode === 'browse' ? <Catalog scrollContainer={content} /> : <Generate />}
+      </div>
 
       <footer
         style={{
           borderTop: '1px solid var(--sidebar-border)',
           color: 'var(--muted-foreground)',
+          flex: '0 0 auto',
           fontSize: 10,
           lineHeight: 1.45,
           padding: '10px 15px',
@@ -186,7 +202,7 @@ export default function ArticraftPanel() {
   )
 }
 
-function Catalog() {
+function Catalog({ scrollContainer }: { scrollContainer: { current: HTMLDivElement | null } }) {
   const [query, setQuery] = useState('')
   const debouncedQuery = useDebouncedValue(query, 250)
   const [category, setCategory] = useState<ArticraftCategory | undefined>()
@@ -198,19 +214,16 @@ function Catalog() {
   const [total, setTotal] = useState(0)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
   const [searchFocused, setSearchFocused] = useState(false)
-  const sentinel = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
     setError('')
-    setPage(1)
     void fetchCatalog({
       category,
       query: debouncedQuery,
-      page: 1,
+      page,
       pageSize: PAGE_SIZE,
       signal: controller.signal,
     })
@@ -218,6 +231,7 @@ function Catalog() {
         setItems(response.items)
         setTotal(response.total)
         setCategories(response.categories)
+        scrollContainer.current?.scrollTo({ top: 0 })
       })
       .catch((cause) => {
         if (!controller.signal.aborted) setError(errorMessage(cause))
@@ -226,113 +240,90 @@ function Catalog() {
         if (!controller.signal.aborted) setLoading(false)
       })
     return () => controller.abort()
-  }, [category, debouncedQuery])
-
-  const loadMore = useCallback(async () => {
-    if (loading || loadingMore || items.length >= total) return
-    const nextPage = page + 1
-    setLoadingMore(true)
-    setError('')
-    try {
-      const response = await fetchCatalog({
-        category,
-        query: debouncedQuery,
-        page: nextPage,
-        pageSize: PAGE_SIZE,
-      })
-      setItems((current) => uniqueItems([...current, ...response.items]))
-      setPage(nextPage)
-      setTotal(response.total)
-      setCategories(response.categories)
-    } catch (cause) {
-      setError(errorMessage(cause))
-    } finally {
-      setLoadingMore(false)
-    }
-  }, [category, debouncedQuery, items.length, loading, loadingMore, page, total])
-
-  useEffect(() => {
-    const target = sentinel.current
-    if (!target || typeof IntersectionObserver === 'undefined') return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) void loadMore()
-      },
-      { rootMargin: '180px' },
-    )
-    observer.observe(target)
-    return () => observer.disconnect()
-  }, [loadMore])
+  }, [category, debouncedQuery, page, scrollContainer])
 
   const suggestions = debouncedQuery
     ? items
         .filter((item) => item.title.toLocaleLowerCase() !== debouncedQuery.toLocaleLowerCase())
-        .slice(0, 5)
+        .slice(0, 3)
     : []
   const allCount = categories.reduce((sum, entry) => sum + entry.count, 0)
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ position: 'relative' }}>
-        <Icon name="search" style={{ left: 10, position: 'absolute', top: 10, zIndex: 1 }} />
-        <input
-          aria-label="Search Articraft catalog"
-          onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
-          onChange={(event) => setQuery(event.target.value)}
-          onFocus={() => setSearchFocused(true)}
-          placeholder="Search hinges, chairs, tools…"
-          style={{
-            ...inputStyle,
-            paddingLeft: 31,
-            paddingRight: query ? 30 : 10,
-          }}
-          value={query}
-        />
-        {query && (
-          <button
-            aria-label="Clear search"
-            onClick={() => setQuery('')}
-            style={iconButtonStyle({ position: 'absolute', right: 5, top: 5 })}
-            type="button"
-          >
-            ×
-          </button>
-        )}
+      <div>
+        <div style={{ position: 'relative' }}>
+          <Icon name="search" style={{ left: 10, position: 'absolute', top: 10, zIndex: 1 }} />
+          <input
+            aria-label="Search Articraft catalog"
+            onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setPage(1)
+            }}
+            onFocus={() => setSearchFocused(true)}
+            placeholder="Search hinges, chairs, tools…"
+            style={{
+              ...inputStyle,
+              paddingLeft: 31,
+              paddingRight: query ? 30 : 10,
+            }}
+            value={query}
+          />
+          {query && (
+            <button
+              aria-label="Clear search"
+              onClick={() => {
+                setQuery('')
+                setPage(1)
+              }}
+              style={iconButtonStyle({
+                position: 'absolute',
+                right: 5,
+                top: 5,
+              })}
+              type="button"
+            >
+              ×
+            </button>
+          )}
+        </div>
         {searchFocused && suggestions.length > 0 && (
           <div
+            aria-label="Search suggestions"
             style={{
-              background: 'var(--popover, var(--background))',
               border: '1px solid var(--border)',
-              borderRadius: 10,
-              boxShadow: '0 12px 30px rgba(0,0,0,.24)',
-              left: 0,
+              borderRadius: 9,
+              marginTop: 5,
               overflow: 'hidden',
-              position: 'absolute',
-              right: 0,
-              top: 'calc(100% + 5px)',
-              zIndex: 10,
             }}
           >
             {suggestions.map((item) => (
               <button
                 key={item.id}
-                onClick={() => setQuery(item.title)}
+                onClick={() => {
+                  setQuery(item.title)
+                  setPage(1)
+                  setSearchFocused(false)
+                }}
                 style={{
                   alignItems: 'center',
                   background: 'transparent',
                   border: 0,
+                  borderBottom: '1px solid var(--border)',
                   color: 'inherit',
                   cursor: 'pointer',
                   display: 'flex',
-                  fontSize: 11,
-                  gap: 8,
-                  padding: '8px 10px',
+                  fontSize: 10,
+                  gap: 7,
+                  padding: '7px 9px',
                   textAlign: 'left',
                   width: '100%',
                 }}
                 type="button"
               >
-                <Icon name="corner" size={12} />
+                <Icon name="corner" size={11} />
                 <span
                   style={{
                     overflow: 'hidden',
@@ -363,7 +354,10 @@ function Catalog() {
           active={!category}
           count={allCount || total}
           label="All"
-          onClick={() => setCategory(undefined)}
+          onClick={() => {
+            setCategory(undefined)
+            setPage(1)
+          }}
         />
         {categories.map((entry) => (
           <CategoryChip
@@ -371,7 +365,10 @@ function Catalog() {
             count={entry.count}
             key={entry.name}
             label={entry.name}
-            onClick={() => setCategory(entry.name)}
+            onClick={() => {
+              setCategory(entry.name)
+              setPage(1)
+            }}
           />
         ))}
       </fieldset>
@@ -387,17 +384,7 @@ function Catalog() {
           {loading ? 'Reading catalog…' : `${total.toLocaleString()} articulated assets`}
         </span>
         {!loading && total > 0 && (
-          <span
-            style={{
-              color: ACCENT,
-              fontSize: 9,
-              fontWeight: 700,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-            }}
-          >
-            Place-ready
-          </span>
+          <Pagination page={page} pageCount={pageCount} setPage={setPage} />
         )}
       </div>
 
@@ -422,19 +409,77 @@ function Catalog() {
         </div>
       )}
 
-      <div ref={sentinel} style={{ minHeight: 1 }} />
-      {!loading && items.length < total && (
-        <button
-          disabled={loadingMore}
-          onClick={() => void loadMore()}
-          style={secondaryButton(loadingMore, { alignSelf: 'center' })}
-          type="button"
-        >
-          {loadingMore ? 'Loading more…' : `Load more · ${items.length} of ${total}`}
-        </button>
+      {!loading && pageCount > 1 && (
+        <Pagination page={page} pageCount={pageCount} setPage={setPage} />
       )}
     </section>
   )
+}
+
+function Pagination({
+  page,
+  pageCount,
+  setPage,
+}: {
+  page: number
+  pageCount: number
+  setPage: (page: number) => void
+}) {
+  return (
+    <nav
+      aria-label="Catalog pages"
+      style={{
+        alignItems: 'center',
+        display: 'flex',
+        gap: 5,
+        justifyContent: 'center',
+      }}
+    >
+      <button
+        aria-label="Previous catalog page"
+        disabled={page <= 1}
+        onClick={() => setPage(Math.max(1, page - 1))}
+        style={pageButton(page <= 1)}
+        type="button"
+      >
+        ‹
+      </button>
+      <span
+        style={{
+          color: 'var(--muted-foreground)',
+          fontSize: 9,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {page} / {pageCount}
+      </span>
+      <button
+        aria-label="Next catalog page"
+        disabled={page >= pageCount}
+        onClick={() => setPage(Math.min(pageCount, page + 1))}
+        style={pageButton(page >= pageCount)}
+        type="button"
+      >
+        ›
+      </button>
+    </nav>
+  )
+}
+
+function pageButton(disabled: boolean): CSSProperties {
+  return {
+    alignItems: 'center',
+    background: 'transparent',
+    border: '1px solid var(--border)',
+    borderRadius: 999,
+    color: 'inherit',
+    cursor: disabled ? 'default' : 'pointer',
+    display: 'flex',
+    height: 24,
+    justifyContent: 'center',
+    opacity: disabled ? 0.35 : 1,
+    width: 24,
+  }
 }
 
 function CategoryChip({
@@ -472,7 +517,6 @@ function CategoryChip({
 function CatalogCard({ item }: { item: ArticraftCatalogItem }) {
   const selected = useArticraftStore((state) => state.selectedItem?.id === item.id)
   const activeTool = useEditor((state) => state.tool)
-  const [imageFailed, setImageFailed] = useState(false)
   const armed = selected && activeTool === 'articraft:asset'
   const movingJoints = item.joints.filter((joint) => joint.type !== 'fixed').length
 
@@ -506,17 +550,7 @@ function CatalogCard({ item }: { item: ArticraftCatalogItem }) {
           width: '100%',
         }}
       >
-        {item.thumbnailUrl && !imageFailed ? (
-          <img
-            alt=""
-            loading="lazy"
-            onError={() => setImageFailed(true)}
-            src={item.thumbnailUrl}
-            style={{ height: '100%', objectFit: 'cover', width: '100%' }}
-          />
-        ) : (
-          <PreviewFallback category={item.category} />
-        )}
+        <PreviewFallback category={item.category} />
       </div>
       <div
         style={{
@@ -578,12 +612,10 @@ function PreviewFallback({ category }: { category?: ArticraftCategory }) {
   return (
     <div
       aria-hidden
+      data-articraft-preview="metadata"
       style={{
         alignItems: 'center',
-        backgroundColor: '#17181b',
-        backgroundImage:
-          'linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px)',
-        backgroundSize: '12px 12px',
+        background: 'linear-gradient(145deg, #202228, #151619)',
         color: '#828892',
         display: 'flex',
         flexDirection: 'column',
@@ -593,15 +625,28 @@ function PreviewFallback({ category }: { category?: ArticraftCategory }) {
         width: '100%',
       }}
     >
-      <Icon name="cube" size={27} />
+      <div
+        style={{
+          alignItems: 'center',
+          border: '1px solid #4b4f58',
+          borderRadius: 999,
+          display: 'flex',
+          height: 42,
+          justifyContent: 'center',
+          width: 42,
+        }}
+      >
+        <Icon name="cube" size={21} />
+      </div>
       <span
         style={{
-          fontSize: 8,
-          letterSpacing: '0.1em',
+          color: '#9da3ad',
+          fontSize: 7,
+          letterSpacing: '0.13em',
           textTransform: 'uppercase',
         }}
       >
-        {category ?? 'Articulated'}
+        {category ?? '3D asset'}
       </span>
     </div>
   )
@@ -1319,10 +1364,6 @@ async function imageFileFromUrl(url: string, name: string): Promise<File> {
   return new File([blob], `${basename || 'reference'}.${extension}`, {
     type: blob.type,
   })
-}
-
-function uniqueItems(items: ArticraftCatalogItem[]): ArticraftCatalogItem[] {
-  return Array.from(new Map(items.map((item) => [item.id, item])).values())
 }
 
 function errorMessage(value: unknown): string {
