@@ -40,10 +40,11 @@ credentials. Hosts expose the same-origin broker described in
   image to the Pascal host, its configured mini-articraft worker, and the
   selected model provider. Provider handling is governed by that provider's
   terms and the host operator's account.
-- The reference worker persists the prompt, job status, generated source/run
-  metadata, normalized manifest, and public USDZ artifact. A reference image is
-  kept only for the job and deleted locally when it finishes, although the
-  selected model provider may retain inputs under its own policy.
+- The reference worker persists the prompt, job status, and generated source/run
+  metadata on its private durable volume. It publishes a normalized manifest
+  without the prompt plus the public USDZ artifact. A reference image is kept only
+  for the job and deleted locally when it finishes, although the selected model
+  provider may retain inputs under its own policy.
 - A placed Pascal node persists the catalog or generated artifact URL and
   digest, title, source attribution, optional generation prompt, dimensions,
   part/joint graph, transform, and current joint pose. It does not persist a

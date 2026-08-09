@@ -14,6 +14,7 @@ class Settings:
     storage_bucket: str
     jobs_dir: Path
     runs_dir: Path
+    max_concurrent_jobs: int = 1
 
 
 def load_settings() -> Settings:
@@ -32,6 +33,9 @@ def load_settings() -> Settings:
         storage_bucket=os.getenv("ARTICRAFT_STORAGE_BUCKET", "articraft-catalog"),
         jobs_dir=Path(os.getenv("ARTICRAFT_JOBS_DIR", ".articraft/jobs")),
         runs_dir=Path(os.getenv("ARTICRAFT_RUNS_DIR", ".articraft/runs")),
+        max_concurrent_jobs=_bounded_integer(
+            "ARTICRAFT_MAX_CONCURRENT_JOBS", default=1, minimum=1, maximum=4
+        ),
     )
 
 
@@ -39,4 +43,15 @@ def _required(name: str) -> str:
     value = os.getenv(name, "").strip()
     if not value:
         raise RuntimeError(f"{name} is required")
+    return value
+
+
+def _bounded_integer(name: str, *, default: int, minimum: int, maximum: int) -> int:
+    raw = os.getenv(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be an integer") from error
+    if value < minimum or value > maximum:
+        raise RuntimeError(f"{name} must be between {minimum} and {maximum}")
     return value

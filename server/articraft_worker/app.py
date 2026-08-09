@@ -3,9 +3,20 @@ from __future__ import annotations
 import asyncio
 import hmac
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    UploadFile,
+    status,
+)
 
 from .config import Settings, load_settings
 from .generation import generate_item
@@ -25,12 +36,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service_key=resolved.storage_service_key,
         bucket=resolved.storage_bucket,
     )
-    app = FastAPI(title="Pascal Articraft worker", version="0.1.0")
+    capacity = asyncio.Semaphore(resolved.max_concurrent_jobs)
+    tasks: set[asyncio.Task[None]] = set()
+
+    async def execute(job: Job) -> None:
+        image = _job_image(job, resolved.runs_dir)
+        if job.reference_image is not None and image is None:
+            store.put(
+                job.model_copy(
+                    update={
+                        "status": "failed",
+                        "message": "Reference image is unavailable after worker restart",
+                    }
+                )
+            )
+            return
+        async with capacity:
+            await _run_job(
+                job=job,
+                image=image,
+                settings=resolved,
+                store=store,
+                storage=storage,
+            )
+
+    def schedule(job: Job) -> None:
+        task = asyncio.create_task(execute(job))
+        tasks.add(task)
+        task.add_done_callback(tasks.discard)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        for job in store.active():
+            recovered = job.model_copy(
+                update={"status": "queued", "message": "Recovered after worker restart"}
+            )
+            store.put(recovered)
+            schedule(recovered)
+        yield
+        pending = tuple(tasks)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    app = FastAPI(title="Pascal Articraft worker", version="0.1.0", lifespan=lifespan)
 
     async def authorize(authorization: str | None = Header(default=None)) -> None:
         expected = f"Bearer {resolved.api_key}"
         if authorization is None or not hmac.compare_digest(authorization, expected):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized"
+            )
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -50,7 +107,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if provider not in resolved.allowed_providers:
             raise HTTPException(status_code=400, detail="Provider is not allowed")
         if image is not None and provider == "openrouter":
-            raise HTTPException(status_code=400, detail="OpenRouter image generation is not supported")
+            raise HTTPException(
+                status_code=400, detail="OpenRouter image generation is not supported"
+            )
 
         job_id = uuid.uuid4().hex
         image_path = await _save_image(image, resolved.runs_dir / job_id)
@@ -60,17 +119,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             provider=provider,
             model=model or None,
             prompt=prompt.strip(),
+            reference_image=image_path.name if image_path is not None else None,
         )
         store.put(job)
-        asyncio.create_task(
-            _run_job(
-                job=job,
-                image=image_path,
-                settings=resolved,
-                store=store,
-                storage=storage,
-            )
-        )
+        schedule(job)
         return GenerationResponse.model_validate(job, from_attributes=True)
 
     @app.get(
@@ -114,8 +166,11 @@ async def _run_job(
     store: JobStore,
     storage: SupabaseStorage,
 ) -> None:
-    running = job.model_copy(update={"status": "running", "message": "Generating object"})
+    running = job.model_copy(
+        update={"status": "running", "message": "Generating object"}
+    )
     store.put(running)
+    terminal = False
     try:
         # mini-articraft performs synchronous setup and CAD compilation between
         # awaits, so isolate its event loop from FastAPI's request-serving loop.
@@ -134,18 +189,35 @@ async def _run_job(
         )
         store.put(
             running.model_copy(
-                update={"status": "succeeded", "message": "Generation complete", "item": item}
+                update={
+                    "status": "succeeded",
+                    "message": "Generation complete",
+                    "item": item,
+                }
             )
         )
+        terminal = True
+    except asyncio.CancelledError:
+        raise
     except Exception as error:
         store.put(
             running.model_copy(
                 update={"status": "failed", "message": _safe_error(error)}
             )
         )
+        terminal = True
     finally:
-        if image is not None:
+        if terminal and image is not None:
             image.unlink(missing_ok=True)
+
+
+def _job_image(job: Job, runs_dir: Path) -> Path | None:
+    if job.reference_image is None:
+        return None
+    if Path(job.reference_image).name != job.reference_image:
+        return None
+    path = runs_dir / job.id / job.reference_image
+    return path if path.is_file() else None
 
 
 def _safe_error(error: Exception) -> str:

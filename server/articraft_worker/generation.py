@@ -31,7 +31,9 @@ async def generate_item(
         output_dir=output_dir,
     )
     if not result.succeeded or result.artifact is None:
-        raise RuntimeError(result.error or result.message or "mini-articraft generation failed")
+        raise RuntimeError(
+            result.error or result.message or "mini-articraft generation failed"
+        )
 
     artifact_path = result.artifact.resolve()
     version = _viewer_version(result.run_dir, artifact_path)
@@ -48,17 +50,21 @@ async def generate_item(
         parts=_parts(model_value.get("parts")),
         joints=joints,
         defaultJointValues={
-            joint.name: 0.0
-            for joint in joints
-            if joint.type != "fixed"
+            joint.name: 0.0 for joint in joints if joint.type != "fixed"
         },
         prompt=prompt,
     )
     await storage.upload_manifest(
         f"generated/{job_id}/manifest.json",
-        item.model_dump(mode="json"),
+        _public_manifest(item),
     )
     return item
+
+
+def _public_manifest(item: CatalogItem) -> dict[str, object]:
+    value = item.model_dump(mode="json")
+    value.pop("prompt", None)
+    return value
 
 
 def _viewer_version(run_dir: Path, artifact: Path) -> dict[str, Any]:
@@ -133,7 +139,9 @@ def _dimensions(path: Path) -> tuple[float, float, float]:
     )
 
 
-def _vec3(value: object, fallback: tuple[float, float, float]) -> tuple[float, float, float]:
+def _vec3(
+    value: object, fallback: tuple[float, float, float]
+) -> tuple[float, float, float]:
     if not isinstance(value, (list, tuple)) or len(value) != 3:
         return fallback
     return (float(value[0]), float(value[1]), float(value[2]))

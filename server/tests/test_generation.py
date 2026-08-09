@@ -1,6 +1,5 @@
-from pathlib import Path
-
-from articraft_worker.generation import _joints, _parts, _title
+from articraft_worker.generation import _joints, _parts, _public_manifest, _title
+from articraft_worker.models import Artifact, CatalogItem
 
 
 def test_normalizes_viewer_metadata() -> None:
@@ -29,3 +28,21 @@ def test_title_is_bounded() -> None:
     assert _title("  a   folding desk lamp with a blue shade  ") == (
         "A folding desk lamp with a blue shade"
     )
+
+
+def test_public_manifest_omits_generation_prompt() -> None:
+    item = CatalogItem(
+        id="generated:abc123",
+        title="Folding lamp",
+        artifact=Artifact(url="https://assets.invalid/model.usdz", sha256="abc123"),
+        dimensions=(1.0, 1.0, 1.0),
+        parts=[],
+        joints=[],
+        defaultJointValues={},
+        prompt="private reconstruction details",
+    )
+
+    manifest = _public_manifest(item)
+
+    assert "prompt" not in manifest
+    assert manifest["id"] == "generated:abc123"

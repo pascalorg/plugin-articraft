@@ -25,3 +25,11 @@ class JobStore:
             return None
         except (OSError, ValueError, json.JSONDecodeError):
             return None
+
+    def active(self) -> list[Job]:
+        jobs: list[Job] = []
+        for target in sorted(self.directory.glob("*.json")):
+            job = self.get(target.stem)
+            if job is not None and job.status in {"queued", "running"}:
+                jobs.append(job)
+        return jobs

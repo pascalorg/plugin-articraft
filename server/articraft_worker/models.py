@@ -65,6 +65,7 @@ class Job(BaseModel):
     provider: str
     model: str | None = None
     prompt: str
+    reference_image: str | None = None
 
 
 class GenerationResponse(BaseModel):
