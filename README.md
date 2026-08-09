@@ -30,10 +30,35 @@ The browser package never receives provider, worker, or Supabase service-role
 credentials. Hosts expose the same-origin broker described in
 [HOST_INTEGRATION.md](./HOST_INTEGRATION.md).
 
+## Data and service boundaries
+
+- Browsing calls the Pascal host's same-origin catalog route, then downloads
+  model files from the public catalog storage origin configured by that host.
+  That storage provider receives ordinary request metadata such as IP address
+  and user agent.
+- Generation sends the prompt, selected provider/model, and optional reference
+  image to the Pascal host, its configured mini-articraft worker, and the
+  selected model provider. Provider handling is governed by that provider's
+  terms and the host operator's account.
+- The reference worker persists the prompt, job status, generated source/run
+  metadata, normalized manifest, and public USDZ artifact. A reference image is
+  kept only for the job and deleted locally when it finishes, although the
+  selected model provider may retain inputs under its own policy.
+- A placed Pascal node persists the catalog or generated artifact URL and
+  digest, title, source attribution, optional generation prompt, dimensions,
+  part/joint graph, transform, and current joint pose. It does not persist a
+  provider key, worker bearer token, Supabase service-role key, or Pascal user
+  identity.
+
+The plugin has no OAuth scopes or external account session. Report security or
+support issues through the repository's
+[GitHub issues](https://github.com/pascalorg/plugin-articraft/issues).
+
 ## Development
 
 ```bash
 bun install
+bun run build
 bun run check-types
 bun test
 
@@ -44,6 +69,11 @@ uv run pytest
 
 Read [Create a plugin](https://editor.pascal.app/docs/developers/plugins) for
 Pascal's public Plugin API v1 contract.
+
+Pascal currently consumes the reviewed Git commit and transpiles the raw
+TypeScript entrypoint, matching the Nature reference plugin. `bun run build`
+emits a code-split ESM review artifact under ignored `dist/`; no install-time
+script or network request is required.
 
 ## Upstream and data attribution
 
