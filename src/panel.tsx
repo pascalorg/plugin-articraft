@@ -433,10 +433,12 @@ function Catalog({ scrollContainer }: { scrollContainer: { current: HTMLDivEleme
           style={{
             border: 0,
             display: 'flex',
+            flexWrap: 'wrap',
             gap: 6,
-            margin: '0 -15px',
-            overflowX: 'auto',
-            padding: '0 15px',
+            margin: 0,
+            minWidth: 0,
+            padding: 0,
+            width: '100%',
           }}
         >
           <CategoryChip
@@ -548,9 +550,11 @@ function CategoryChip({
         borderRadius: 999,
         color: active ? ACCENT : 'var(--muted-foreground)',
         cursor: 'pointer',
-        flex: '0 0 auto',
-        fontSize: 10,
-        padding: '5px 8px',
+        flex: '0 1 auto',
+        fontSize: 9,
+        minHeight: 26,
+        maxWidth: '100%',
+        padding: '4px 6px',
         whiteSpace: 'nowrap',
       }}
       type="button"
