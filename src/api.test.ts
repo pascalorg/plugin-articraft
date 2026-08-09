@@ -20,12 +20,26 @@ const item = {
 describe('Articraft API parsing', () => {
   test('accepts a node-ready catalog response', () => {
     expect(isCatalogItem(item)).toBe(true)
-    expect(parseCatalogResponse({ items: [item], page: 1, pageSize: 24, total: 1 }).total).toBe(1)
+    expect(
+      parseCatalogResponse({
+        categories: [{ name: 'Other', count: 1 }],
+        items: [item],
+        page: 1,
+        pageSize: 24,
+        total: 1,
+      }).total,
+    ).toBe(1)
   })
 
   test('rejects incomplete catalog records', () => {
     expect(() =>
-      parseCatalogResponse({ items: [{ id: 'broken' }], page: 1, pageSize: 24, total: 1 }),
+      parseCatalogResponse({
+        categories: [],
+        items: [{ id: 'broken' }],
+        page: 1,
+        pageSize: 24,
+        total: 1,
+      }),
     ).toThrow('invalid response')
   })
 })

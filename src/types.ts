@@ -2,6 +2,16 @@ export type ArticraftArtifactFormat = 'urdf' | 'usdz'
 export type ArticraftSource = 'articraft-10k' | 'generated'
 export type ArticraftJointType = 'fixed' | 'revolute' | 'continuous' | 'prismatic'
 
+export type ArticraftCategory =
+  | 'Appliances'
+  | 'Architecture'
+  | 'Electronics'
+  | 'Furniture'
+  | 'Robotics'
+  | 'Tools'
+  | 'Vehicles'
+  | 'Other'
+
 export type Vec3 = [number, number, number]
 
 export type ArticraftPart = {
@@ -43,6 +53,7 @@ export type ArticraftCatalogItem = {
   id: string
   title: string
   description?: string
+  category?: ArticraftCategory
   source: ArticraftSource
   artifact: ArticraftArtifact
   thumbnailUrl?: string
@@ -56,10 +67,28 @@ export type ArticraftCatalogItem = {
 }
 
 export type ArticraftCatalogResponse = {
+  categories: Array<{
+    count: number
+    name: ArticraftCategory
+  }>
   items: ArticraftCatalogItem[]
   page: number
   pageSize: number
   total: number
+}
+
+export type ArticraftProjectImage = {
+  id: string
+  name: string
+  url: string
+}
+
+export type ArticraftReferenceRender = {
+  errorText?: string
+  id: string
+  imageUrl?: string
+  queuePosition?: number | null
+  status: 'pending' | 'completed' | 'failed'
 }
 
 export type ArticraftGenerationStatus = 'queued' | 'running' | 'succeeded' | 'failed'

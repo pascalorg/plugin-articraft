@@ -33,7 +33,10 @@ export type {
   ArticraftAttribution,
   ArticraftCatalogItem,
   ArticraftCatalogResponse,
+  ArticraftCategory,
   ArticraftGeneration,
   ArticraftJoint,
   ArticraftPart,
+  ArticraftProjectImage,
+  ArticraftReferenceRender,
 } from './types'
