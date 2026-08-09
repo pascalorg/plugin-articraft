@@ -26,6 +26,7 @@ describe('Articraft asset schema', () => {
         },
       ],
       jointValues: { globe_spin: 1.25 },
+      motionEnabled: true,
       attribution: {
         creator: 'Articraft authors',
         license: 'CC-BY-4.0',
@@ -35,6 +36,23 @@ describe('Articraft asset schema', () => {
 
     expect(node.type).toBe('articraft:asset')
     expect(node.jointValues.globe_spin).toBe(1.25)
+    expect(node.motionEnabled).toBe(true)
     expect(node.artifact.sha256).toBe('a'.repeat(64))
+  })
+
+  test('keeps older nodes still until motion is explicitly enabled', () => {
+    const node = ArticraftAssetNode.parse({
+      catalogId: 'legacy',
+      title: 'Existing asset',
+      source: 'articraft-10k',
+      artifact: { format: 'urdf', url: 'https://assets.example/model.urdf' },
+      attribution: {
+        creator: 'Articraft authors',
+        license: 'CC-BY-4.0',
+        sourceUrl: 'https://huggingface.co/datasets/camvsl/Articraft-10K',
+      },
+    })
+
+    expect(node.motionEnabled).toBe(false)
   })
 })

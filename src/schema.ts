@@ -48,6 +48,7 @@ export const ArticraftAssetNode = BaseNode.extend({
     .default([]),
   joints: z.array(ArticraftJoint).default([]),
   jointValues: z.record(z.string(), z.number()).default({}),
+  motionEnabled: z.boolean().default(false),
   attribution: z.object({
     creator: z.string(),
     license: z.string(),

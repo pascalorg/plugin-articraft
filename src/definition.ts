@@ -70,6 +70,7 @@ export const articraftAssetDefinition: Definition = {
     parts: [],
     joints: [],
     jointValues: {},
+    motionEnabled: false,
     attribution: {
       creator: 'Articraft authors',
       license: 'CC-BY-4.0',
@@ -117,6 +118,6 @@ export const articraftAssetDefinition: Definition = {
   },
   mcp: {
     description:
-      'A poseable Articraft asset. Stores an immutable artifact, rigid-part joint graph, and per-joint revolute/continuous/prismatic pose values.',
+      'A poseable Articraft asset. Stores an immutable artifact, rigid-part joint graph, per-joint revolute/continuous/prismatic pose values, and persistent motion state.',
   },
 }

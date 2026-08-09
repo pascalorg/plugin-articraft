@@ -3,8 +3,8 @@
 import { type AnyNodeId, useScene } from '@pascal-app/core'
 import { PanelSection, SliderControl } from '@pascal-app/editor'
 import { useViewer } from '@pascal-app/viewer'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { setMotionPreview } from './motion-preview'
+import { useMemo } from 'react'
+import { usePrefersReducedMotion } from './motion'
 import type { ArticraftAssetNode } from './schema'
 import type { ArticraftJoint } from './types'
 
@@ -18,66 +18,33 @@ export default function ArticraftJointControls() {
       ? (value as unknown as ArticraftAssetNode)
       : null
   })
-  const [previewing, setPreviewing] = useState(false)
-  const frameRef = useRef<number | null>(null)
-  const nodeId = node?.id ?? null
+  const reducedMotion = usePrefersReducedMotion()
   const movable = useMemo(
     () => node?.joints.filter((joint) => joint.type !== 'fixed') ?? [],
     [node?.joints],
   )
 
-  useEffect(() => {
-    if (!(previewing && nodeId && node)) {
-      if (nodeId) setMotionPreview(nodeId, null)
-      return
-    }
-
-    const startedAt = performance.now()
-    const animate = (now: number) => {
-      const elapsed = (now - startedAt) / 1_000
-      setMotionPreview(
-        nodeId,
-        Object.fromEntries(
-          movable.map((joint, index) => {
-            const [lower, upper] = rangeFor(joint)
-            const progress = (Math.sin(elapsed * 1.4 + index * 0.7) + 1) / 2
-            return [joint.name, lower + (upper - lower) * progress]
-          }),
-        ),
-      )
-      frameRef.current = requestAnimationFrame(animate)
-    }
-    frameRef.current = requestAnimationFrame(animate)
-
-    return () => {
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
-      frameRef.current = null
-      setMotionPreview(nodeId, null)
-    }
-  }, [movable, node, nodeId, previewing])
-
   if (!node) return null
 
-  const stopPreview = () => {
-    setPreviewing(false)
-    setMotionPreview(node.id, null)
+  const setMotionEnabled = (motionEnabled: boolean) => {
+    useScene.getState().updateNode(node.id as AnyNodeId, { motionEnabled } as never)
   }
 
   const setJoint = (joint: ArticraftJoint, value: number) => {
-    stopPreview()
     useScene.getState().updateNode(
       node.id as AnyNodeId,
       {
+        motionEnabled: false,
         jointValues: { ...node.jointValues, [joint.name]: value },
       } as never,
     )
   }
 
   const reset = () => {
-    stopPreview()
     useScene.getState().updateNode(
       node.id as AnyNodeId,
       {
+        motionEnabled: false,
         jointValues: Object.fromEntries(movable.map((joint) => [joint.name, 0])),
       } as never,
     )
@@ -172,12 +139,17 @@ export default function ArticraftJointControls() {
         {movable.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
             <button
-              aria-pressed={previewing}
-              onClick={() => setPreviewing((value) => !value)}
-              style={buttonStyle(previewing)}
+              aria-pressed={node.motionEnabled && !reducedMotion}
+              disabled={reducedMotion}
+              onClick={() => setMotionEnabled(!node.motionEnabled)}
+              style={buttonStyle(node.motionEnabled && !reducedMotion, reducedMotion)}
               type="button"
             >
-              {previewing ? 'Stop preview' : 'Preview motion'}
+              {reducedMotion
+                ? 'Motion reduced'
+                : node.motionEnabled
+                  ? 'Stop motion'
+                  : 'Start motion'}
             </button>
             <button onClick={reset} style={buttonStyle(false)} type="button">
               Reset pose
@@ -219,14 +191,15 @@ function toRadians(value: number): number {
   return (value * Math.PI) / 180
 }
 
-function buttonStyle(active: boolean) {
+function buttonStyle(active: boolean, disabled = false) {
   return {
     background: active ? 'var(--primary)' : 'var(--secondary)',
     border: '1px solid var(--border)',
     borderRadius: 999,
     color: active ? 'var(--primary-foreground)' : 'var(--secondary-foreground)',
-    cursor: 'pointer',
+    cursor: disabled ? 'default' : 'pointer',
     fontSize: 12,
+    opacity: disabled ? 0.5 : 1,
     padding: '7px 12px',
   } as const
 }

@@ -29,6 +29,7 @@ export default function ArticraftTool() {
             parts: item.parts,
             joints: item.joints,
             jointValues: item.defaultJointValues,
+            motionEnabled: true,
             attribution: item.attribution,
             prompt: item.prompt,
           })
@@ -51,6 +52,7 @@ export default function ArticraftTool() {
       parts: item.parts,
       joints: item.joints,
       jointValues: item.defaultJointValues,
+      motionEnabled: true,
       attribution: item.attribution,
       prompt: item.prompt,
     })
@@ -63,7 +65,7 @@ export default function ArticraftTool() {
 
   return (
     <group layers={EDITOR_LAYER} ref={cursorRef} visible={cursorVisible}>
-      <ArticraftVisual ghost node={previewNode} />
+      <ArticraftVisual ghost motionEnabled={cursorVisible} node={previewNode} />
     </group>
   )
 }

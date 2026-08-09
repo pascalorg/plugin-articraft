@@ -8,7 +8,7 @@ import {
 } from '@pascal-app/core'
 import { EDITOR_LAYER } from '@pascal-app/editor'
 import { useNodeEvents } from '@pascal-app/viewer'
-import { useThree } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef, useState } from 'react'
 import {
   Color,
@@ -22,7 +22,7 @@ import {
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { USDLoader } from 'three/examples/jsm/loaders/USDLoader.js'
 import URDFLoader from 'urdf-loader'
-import { getMotionPreview, subscribeMotionPreview } from './motion-preview'
+import { motionValueAtTime, usePrefersReducedMotion } from './motion'
 import type { ArticraftAssetNode } from './schema'
 import { resolveArticraftRootTransform } from './transform'
 import type { ArticraftJoint } from './types'
@@ -56,14 +56,21 @@ export default function ArticraftRenderer({ node }: { node: ArticraftAssetNode }
 
 export function ArticraftVisual({
   ghost = false,
+  motionEnabled,
   node,
 }: {
   ghost?: boolean
+  motionEnabled?: boolean
   node: ArticraftAssetNode
 }) {
   const [loaded, setLoaded] = useState<LoadedArticulation | null>(null)
   const [failed, setFailed] = useState(false)
   const invalidate = useThree((state) => state.invalidate)
+  const reducedMotion = usePrefersReducedMotion()
+  const shouldAnimate =
+    (motionEnabled ?? node.motionEnabled) &&
+    !reducedMotion &&
+    node.joints.some((joint) => joint.type !== 'fixed')
 
   useEffect(() => {
     let cancelled = false
@@ -101,17 +108,25 @@ export function ArticraftVisual({
 
   useEffect(() => {
     if (!loaded) return
-    const applyValues = () => {
-      for (const [name, value] of Object.entries(
-        getMotionPreview(node.id) ?? node.jointValues,
-      )) {
-        loaded.setJointValue(name, value)
-      }
-      invalidate()
+    for (const [name, value] of Object.entries(node.jointValues)) {
+      loaded.setJointValue(name, value)
     }
-    applyValues()
-    return subscribeMotionPreview(node.id, applyValues)
-  }, [invalidate, loaded, node.id, node.jointValues])
+    invalidate()
+  }, [invalidate, loaded, node.jointValues, shouldAnimate])
+
+  useFrame((state) => {
+    if (!(loaded && shouldAnimate)) return
+    let motionIndex = 0
+    for (const joint of node.joints) {
+      if (joint.type === 'fixed') continue
+      loaded.setJointValue(
+        joint.name,
+        motionValueAtTime(joint, motionIndex, state.clock.elapsedTime),
+      )
+      motionIndex += 1
+    }
+    invalidate()
+  })
 
   if (loaded) return <primitive object={loaded.root} />
 
