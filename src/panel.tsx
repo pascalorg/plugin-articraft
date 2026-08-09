@@ -784,6 +784,7 @@ function Generate() {
     <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
       <Step eyebrow="01 · Describe" title="What should move?">
         <textarea
+          aria-label="Prompt"
           onChange={(event) => setPrompt(event.target.value)}
           placeholder="A compact task chair with adjustable arms and a tilting back…"
           required
