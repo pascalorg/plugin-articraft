@@ -1,0 +1,147 @@
+from __future__ import annotations
+
+import asyncio
+import hmac
+import uuid
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, status
+
+from .config import Settings, load_settings
+from .generation import generate_item
+from .models import GenerationResponse, Job
+from .storage import SupabaseStorage
+from .store import JobStore
+
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    resolved = settings or load_settings()
+    store = JobStore(resolved.jobs_dir)
+    storage = SupabaseStorage(
+        url=resolved.storage_url,
+        service_key=resolved.storage_service_key,
+        bucket=resolved.storage_bucket,
+    )
+    app = FastAPI(title="Pascal Articraft worker", version="0.1.0")
+
+    async def authorize(authorization: str | None = Header(default=None)) -> None:
+        expected = f"Bearer {resolved.api_key}"
+        if authorization is None or not hmac.compare_digest(authorization, expected):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.post(
+        "/v1/generations",
+        response_model=GenerationResponse,
+        dependencies=[Depends(authorize)],
+    )
+    async def create_generation(
+        prompt: str = Form(min_length=1, max_length=2_000),
+        provider: str = Form(),
+        model: str | None = Form(default=None, max_length=160),
+        image: UploadFile | None = File(default=None),
+    ) -> GenerationResponse:
+        if provider not in resolved.allowed_providers:
+            raise HTTPException(status_code=400, detail="Provider is not allowed")
+        if image is not None and provider == "openrouter":
+            raise HTTPException(status_code=400, detail="OpenRouter image generation is not supported")
+
+        job_id = uuid.uuid4().hex
+        image_path = await _save_image(image, resolved.runs_dir / job_id)
+        job = Job(
+            id=job_id,
+            status="queued",
+            provider=provider,
+            model=model or None,
+            prompt=prompt.strip(),
+        )
+        store.put(job)
+        asyncio.create_task(
+            _run_job(
+                job=job,
+                image=image_path,
+                settings=resolved,
+                store=store,
+                storage=storage,
+            )
+        )
+        return GenerationResponse.model_validate(job, from_attributes=True)
+
+    @app.get(
+        "/v1/generations/{job_id}",
+        response_model=GenerationResponse,
+        dependencies=[Depends(authorize)],
+    )
+    async def get_generation(job_id: str) -> GenerationResponse:
+        if not job_id.isalnum():
+            raise HTTPException(status_code=404, detail="Generation not found")
+        job = store.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Generation not found")
+        return GenerationResponse.model_validate(job, from_attributes=True)
+
+    return app
+
+
+async def _save_image(image: UploadFile | None, directory: Path) -> Path | None:
+    if image is None:
+        return None
+    if image.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=415, detail="Image must be JPEG, PNG, or WebP")
+    content = await image.read(MAX_IMAGE_BYTES + 1)
+    if len(content) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image must be 10 MB or smaller")
+    extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[
+        image.content_type
+    ]
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"reference{extension}"
+    path.write_bytes(content)
+    return path
+
+
+async def _run_job(
+    *,
+    job: Job,
+    image: Path | None,
+    settings: Settings,
+    store: JobStore,
+    storage: SupabaseStorage,
+) -> None:
+    running = job.model_copy(update={"status": "running", "message": "Generating object"})
+    store.put(running)
+    try:
+        item = await generate_item(
+            job_id=job.id,
+            prompt=job.prompt,
+            provider=job.provider,
+            model=job.model,
+            image=image,
+            runs_dir=settings.runs_dir,
+            storage=storage,
+        )
+        store.put(
+            running.model_copy(
+                update={"status": "succeeded", "message": "Generation complete", "item": item}
+            )
+        )
+    except Exception as error:
+        store.put(
+            running.model_copy(
+                update={"status": "failed", "message": _safe_error(error)}
+            )
+        )
+    finally:
+        if image is not None:
+            image.unlink(missing_ok=True)
+
+
+def _safe_error(error: Exception) -> str:
+    message = str(error).strip()
+    return (message or "Generation failed")[:500]
