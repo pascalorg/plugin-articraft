@@ -117,14 +117,20 @@ async def _run_job(
     running = job.model_copy(update={"status": "running", "message": "Generating object"})
     store.put(running)
     try:
-        item = await generate_item(
-            job_id=job.id,
-            prompt=job.prompt,
-            provider=job.provider,
-            model=job.model,
-            image=image,
-            runs_dir=settings.runs_dir,
-            storage=storage,
+        # mini-articraft performs synchronous setup and CAD compilation between
+        # awaits, so isolate its event loop from FastAPI's request-serving loop.
+        item = await asyncio.to_thread(
+            lambda: asyncio.run(
+                generate_item(
+                    job_id=job.id,
+                    prompt=job.prompt,
+                    provider=job.provider,
+                    model=job.model,
+                    image=image,
+                    runs_dir=settings.runs_dir,
+                    storage=storage,
+                )
+            )
         )
         store.put(
             running.model_copy(
