@@ -1,9 +1,12 @@
 'use client'
 
 import { useRegistry } from '@pascal-app/core'
+import { EDITOR_LAYER } from '@pascal-app/editor'
 import { useNodeEvents } from '@pascal-app/viewer'
+import { useThree } from '@react-three/fiber'
 import { useEffect, useRef, useState } from 'react'
 import {
+  Color,
   Group,
   type Material,
   type Mesh,
@@ -14,6 +17,7 @@ import {
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { USDLoader } from 'three/examples/jsm/loaders/USDLoader.js'
 import URDFLoader from 'urdf-loader'
+import { getMotionPreview, subscribeMotionPreview } from './motion-preview'
 import type { ArticraftAssetNode } from './schema'
 import type { ArticraftJoint } from './types'
 
@@ -24,10 +28,33 @@ type LoadedArticulation = {
 
 export default function ArticraftRenderer({ node }: { node: ArticraftAssetNode }) {
   const ref = useRef<Group>(null)
-  const [loaded, setLoaded] = useState<LoadedArticulation | null>(null)
-  const [failed, setFailed] = useState(false)
   const handlers = useNodeEvents(node as never, node.type as never)
   useRegistry(node.id, node.type, ref as React.RefObject<Object3D>)
+
+  return (
+    <group
+      {...handlers}
+      position={node.position}
+      ref={ref}
+      rotation={node.rotation}
+      scale={node.scale}
+      visible={node.visible}
+    >
+      <ArticraftVisual node={node} />
+    </group>
+  )
+}
+
+export function ArticraftVisual({
+  ghost = false,
+  node,
+}: {
+  ghost?: boolean
+  node: ArticraftAssetNode
+}) {
+  const [loaded, setLoaded] = useState<LoadedArticulation | null>(null)
+  const [failed, setFailed] = useState(false)
+  const invalidate = useThree((state) => state.invalidate)
 
   useEffect(() => {
     let cancelled = false
@@ -40,50 +67,60 @@ export default function ArticraftRenderer({ node }: { node: ArticraftAssetNode }
         node.artifact.format === 'urdf'
           ? await loadUrdf(node.artifact.url)
           : await loadUsdz(node.artifact.url, node.parts, node.joints)
+      if (ghost) configureGhost(next.root)
       if (cancelled) {
         disposeObject(next.root)
         return
       }
       owned = next.root
       setLoaded(next)
+      invalidate()
     }
 
     void load().catch((error) => {
       if (cancelled) return
       console.error('[articraft] asset load failed', error)
       setFailed(true)
+      invalidate()
     })
 
     return () => {
       cancelled = true
       if (owned) disposeObject(owned)
     }
-  }, [node.artifact.format, node.artifact.url, node.joints, node.parts])
+  }, [ghost, invalidate, node.artifact.format, node.artifact.url, node.joints, node.parts])
 
   useEffect(() => {
     if (!loaded) return
-    for (const [name, value] of Object.entries(node.jointValues)) {
-      loaded.setJointValue(name, value)
+    const applyValues = () => {
+      for (const [name, value] of Object.entries(
+        getMotionPreview(node.id) ?? node.jointValues,
+      )) {
+        loaded.setJointValue(name, value)
+      }
+      invalidate()
     }
-  }, [loaded, node.jointValues])
+    applyValues()
+    return subscribeMotionPreview(node.id, applyValues)
+  }, [invalidate, loaded, node.id, node.jointValues])
+
+  if (loaded) return <primitive object={loaded.root} />
 
   return (
-    <group
-      {...handlers}
-      position={node.position}
-      ref={ref}
-      rotation={node.rotation}
-      scale={node.scale}
-      visible={node.visible}
+    <mesh
+      layers={ghost ? EDITOR_LAYER : undefined}
+      position={[0, node.dimensions[1] / 2, 0]}
+      raycast={ghost ? () => undefined : undefined}
     >
-      {loaded && <primitive object={loaded.root} />}
-      {failed && (
-        <mesh position={[0, node.dimensions[1] / 2, 0]}>
-          <boxGeometry args={node.dimensions} />
-          <meshStandardMaterial color="#ef4444" opacity={0.3} transparent wireframe />
-        </mesh>
-      )}
-    </group>
+      <boxGeometry args={node.dimensions} />
+      <meshStandardMaterial
+        color={failed ? '#ef4444' : '#8b5cf6'}
+        depthWrite={!ghost}
+        opacity={failed ? 0.3 : 0.2}
+        transparent
+        wireframe
+      />
+    </mesh>
   )
 }
 
@@ -198,6 +235,28 @@ function markShadows(root: Object3D) {
     if (!mesh.isMesh) return
     mesh.castShadow = true
     mesh.receiveShadow = true
+  })
+}
+
+function configureGhost(root: Object3D) {
+  const tint = new Color('#8b5cf6')
+  root.traverse((object) => {
+    object.layers.set(EDITOR_LAYER)
+    object.raycast = () => undefined
+    const mesh = object as Mesh
+    if (!mesh.isMesh) return
+    const source = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    const materials = source.map((material) => {
+      const clone = material.clone()
+      clone.transparent = true
+      clone.opacity = 0.58
+      clone.depthWrite = false
+      if ('color' in clone && clone.color instanceof Color) clone.color.lerp(tint, 0.35)
+      return clone
+    })
+    mesh.material = Array.isArray(mesh.material) ? materials : materials[0]!
+    mesh.castShadow = false
+    mesh.receiveShadow = false
   })
 }
 

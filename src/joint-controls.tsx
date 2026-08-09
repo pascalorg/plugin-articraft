@@ -3,6 +3,8 @@
 import { type AnyNodeId, useScene } from '@pascal-app/core'
 import { PanelSection, SliderControl } from '@pascal-app/editor'
 import { useViewer } from '@pascal-app/viewer'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { setMotionPreview } from './motion-preview'
 import type { ArticraftAssetNode } from './schema'
 import type { ArticraftJoint } from './types'
 
@@ -16,10 +18,53 @@ export default function ArticraftJointControls() {
       ? (value as unknown as ArticraftAssetNode)
       : null
   })
+  const [previewing, setPreviewing] = useState(false)
+  const frameRef = useRef<number | null>(null)
+  const nodeId = node?.id ?? null
+  const movable = useMemo(
+    () => node?.joints.filter((joint) => joint.type !== 'fixed') ?? [],
+    [node?.joints],
+  )
+
+  useEffect(() => {
+    if (!(previewing && nodeId && node)) {
+      if (nodeId) setMotionPreview(nodeId, null)
+      return
+    }
+
+    const startedAt = performance.now()
+    const animate = (now: number) => {
+      const elapsed = (now - startedAt) / 1_000
+      setMotionPreview(
+        nodeId,
+        Object.fromEntries(
+          movable.map((joint, index) => {
+            const [lower, upper] = rangeFor(joint)
+            const progress = (Math.sin(elapsed * 1.4 + index * 0.7) + 1) / 2
+            return [joint.name, lower + (upper - lower) * progress]
+          }),
+        ),
+      )
+      frameRef.current = requestAnimationFrame(animate)
+    }
+    frameRef.current = requestAnimationFrame(animate)
+
+    return () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
+      frameRef.current = null
+      setMotionPreview(nodeId, null)
+    }
+  }, [movable, node, nodeId, previewing])
+
   if (!node) return null
-  const movable = node.joints.filter((joint) => joint.type !== 'fixed')
+
+  const stopPreview = () => {
+    setPreviewing(false)
+    setMotionPreview(node.id, null)
+  }
 
   const setJoint = (joint: ArticraftJoint, value: number) => {
+    stopPreview()
     useScene.getState().updateNode(
       node.id as AnyNodeId,
       {
@@ -29,6 +74,7 @@ export default function ArticraftJointControls() {
   }
 
   const reset = () => {
+    stopPreview()
     useScene.getState().updateNode(
       node.id as AnyNodeId,
       {
@@ -70,22 +116,19 @@ export default function ArticraftJointControls() {
           })
         )}
         {movable.length > 0 && (
-          <button
-            onClick={reset}
-            style={{
-              background: 'var(--secondary)',
-              border: '1px solid var(--border)',
-              borderRadius: 999,
-              color: 'var(--secondary-foreground)',
-              cursor: 'pointer',
-              fontSize: 12,
-              marginTop: 8,
-              padding: '7px 12px',
-            }}
-            type="button"
-          >
-            Reset pose
-          </button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+            <button
+              aria-pressed={previewing}
+              onClick={() => setPreviewing((value) => !value)}
+              style={buttonStyle(previewing)}
+              type="button"
+            >
+              {previewing ? 'Stop preview' : 'Preview motion'}
+            </button>
+            <button onClick={reset} style={buttonStyle(false)} type="button">
+              Reset pose
+            </button>
+          </div>
         )}
       </PanelSection>
       <PanelSection title="Source">
@@ -114,4 +157,16 @@ function toDegrees(value: number): number {
 
 function toRadians(value: number): number {
   return (value * Math.PI) / 180
+}
+
+function buttonStyle(active: boolean) {
+  return {
+    background: active ? 'var(--primary)' : 'var(--secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: 999,
+    color: active ? 'var(--primary-foreground)' : 'var(--secondary-foreground)',
+    cursor: 'pointer',
+    fontSize: 12,
+    padding: '7px 12px',
+  } as const
 }

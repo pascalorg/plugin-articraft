@@ -5,6 +5,12 @@ Pascal-hosted mirror of Articraft-10K, place URDF assets as custom Pascal nodes,
 pose their revolute/continuous/prismatic joints, and submit prompt or reference-
 image jobs to a credentialed mini-articraft worker that returns posable USDZ.
 
+Placement previews use the same articulated URDF/USDZ hierarchy as committed
+nodes, with translucent non-interactive materials. Committed nodes continue to
+render while Pascal moves, rotates, or scales their registered root transform.
+The inspector's **Preview motion** control animates every movable joint without
+writing preview frames into scene history or autosave.
+
 This is a Pascal integration maintained by `pascalorg`. It is not an official
 hosted service from the Articraft researchers.
 
@@ -18,6 +24,7 @@ hosted service from the Articraft researchers.
 - USDZ rendering for results produced by the Apache 2.0 mini-articraft SDK.
 - Joint sliders in the normal Pascal inspector; radians stay radians in scene
   data and are displayed as degrees only for people.
+- A non-persistent motion preview that smoothly sweeps every movable joint.
 
 The browser package never receives provider, worker, or Supabase service-role
 credentials. Hosts expose the same-origin broker described in

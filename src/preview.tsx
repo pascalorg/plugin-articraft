@@ -1,6 +1,7 @@
 'use client'
 
 import { EDITOR_LAYER } from '@pascal-app/editor'
+import { ArticraftVisual } from './renderer'
 import type { ArticraftAssetNode } from './schema'
 import type { Vec3 } from './types'
 
@@ -11,7 +12,9 @@ export default function ArticraftPreview({
   node?: ArticraftAssetNode
   dimensions?: Vec3
 }) {
-  const bounds = node?.dimensions ?? dimensions ?? [1, 1, 1]
+  if (node) return <ArticraftVisual ghost node={node} />
+
+  const bounds = dimensions ?? [1, 1, 1]
   const size: Vec3 = [
     Math.max(0.1, bounds[0]),
     Math.max(0.1, bounds[1]),
