@@ -83,8 +83,62 @@ export default function ArticraftJointControls() {
     )
   }
 
+  const setScale = (value: number) => {
+    useScene.getState().updateNode(node.id as AnyNodeId, { scale: value } as never)
+  }
+
+  const setVector = (
+    key: 'position' | 'rotation',
+    index: 0 | 1 | 2,
+    value: number,
+  ) => {
+    const next = [...node[key]] as [number, number, number]
+    next[index] = key === 'rotation' ? toRadians(value) : value
+    useScene.getState().updateNode(node.id as AnyNodeId, { [key]: next } as never)
+  }
+
   return (
     <>
+      <PanelSection title="Transform">
+        <SliderControl
+          label="Scale"
+          max={20}
+          min={0.05}
+          onChange={setScale}
+          precision={2}
+          restoreOnCommit={false}
+          step={0.05}
+          value={node.scale}
+        />
+        {AXES.map(({ index, label }) => (
+          <SliderControl
+            key={`position-${label}`}
+            label={`Position ${label}`}
+            max={100}
+            min={-100}
+            onChange={(value) => setVector('position', index, value)}
+            precision={2}
+            restoreOnCommit={false}
+            step={0.05}
+            unit="m"
+            value={node.position[index]}
+          />
+        ))}
+        {AXES.map(({ index, label }) => (
+          <SliderControl
+            key={`rotation-${label}`}
+            label={`Rotation ${label}`}
+            max={180}
+            min={-180}
+            onChange={(value) => setVector('rotation', index, value)}
+            precision={1}
+            restoreOnCommit={false}
+            step={1}
+            unit="°"
+            value={toDegrees(node.rotation[index])}
+          />
+        ))}
+      </PanelSection>
       <PanelSection title="Articulation">
         {movable.length === 0 ? (
           <p style={{ color: 'var(--muted-foreground)', fontSize: 12, margin: 0 }}>
@@ -143,6 +197,12 @@ export default function ArticraftJointControls() {
     </>
   )
 }
+
+const AXES = [
+  { index: 0, label: 'X' },
+  { index: 1, label: 'Y' },
+  { index: 2, label: 'Z' },
+] as const
 
 function rangeFor(joint: ArticraftJoint): [number, number] {
   if (joint.limits && joint.limits.upper > joint.limits.lower) {

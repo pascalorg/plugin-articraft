@@ -1,6 +1,11 @@
 'use client'
 
-import { useRegistry } from '@pascal-app/core'
+import {
+  type AnyNodeId,
+  useLiveNodeOverrides,
+  useLiveTransforms,
+  useRegistry,
+} from '@pascal-app/core'
 import { EDITOR_LAYER } from '@pascal-app/editor'
 import { useNodeEvents } from '@pascal-app/viewer'
 import { useThree } from '@react-three/fiber'
@@ -19,6 +24,7 @@ import { USDLoader } from 'three/examples/jsm/loaders/USDLoader.js'
 import URDFLoader from 'urdf-loader'
 import { getMotionPreview, subscribeMotionPreview } from './motion-preview'
 import type { ArticraftAssetNode } from './schema'
+import { resolveArticraftRootTransform } from './transform'
 import type { ArticraftJoint } from './types'
 
 type LoadedArticulation = {
@@ -29,15 +35,18 @@ type LoadedArticulation = {
 export default function ArticraftRenderer({ node }: { node: ArticraftAssetNode }) {
   const ref = useRef<Group>(null)
   const handlers = useNodeEvents(node as never, node.type as never)
+  const liveTransform = useLiveTransforms((state) => state.get(node.id as AnyNodeId))
+  const liveOverride = useLiveNodeOverrides((state) => state.overrides.get(node.id))
+  const transform = resolveArticraftRootTransform(node, liveTransform, liveOverride)
   useRegistry(node.id, node.type, ref as React.RefObject<Object3D>)
 
   return (
     <group
       {...handlers}
-      position={node.position}
+      position={transform.position}
       ref={ref}
-      rotation={node.rotation}
-      scale={node.scale}
+      rotation={transform.rotation}
+      scale={transform.scale}
       visible={node.visible}
     >
       <ArticraftVisual node={node} />

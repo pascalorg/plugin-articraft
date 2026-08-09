@@ -44,16 +44,7 @@ const rotateHandle: HandleDescriptor<ArticraftAssetNode> = {
 }
 
 const parametrics: ParametricDescriptor<ArticraftAssetNode> = {
-  groups: [
-    {
-      label: 'Transform',
-      fields: [
-        { key: 'scale', kind: 'number', min: 0.05, max: 20, step: 0.05 },
-        { key: 'position', kind: 'vec3' },
-        { key: 'rotation', kind: 'vec3' },
-      ],
-    },
-  ],
+  groups: [],
   trailingSection: () => import('./joint-controls'),
 }
 

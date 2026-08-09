@@ -22,8 +22,8 @@ hosted service from the Articraft researchers.
   normalized articulation graph, and current joint pose in the Pascal scene.
 - URDF + OBJ rendering for the CC BY 4.0 Articraft-10K dataset.
 - USDZ rendering for results produced by the Apache 2.0 mini-articraft SDK.
-- Joint sliders in the normal Pascal inspector; radians stay radians in scene
-  data and are displayed as degrees only for people.
+- Live position, rotation, scale, and joint controls in the Pascal inspector;
+  radians stay radians in scene data and are displayed as degrees only for people.
 - A non-persistent motion preview that smoothly sweeps every movable joint.
 
 The browser package never receives provider, worker, or Supabase service-role
