@@ -13,6 +13,7 @@
   },
   "files": [
     "src",
+    "docs/images/articraft-editor-hero.webp",
     "HOST_INTEGRATION.md",
     "README.md",
     "SECURITY.md",

@@ -1,5 +1,7 @@
 # Articraft for Pascal
 
+![Articraft articulated objects placed and posed in the Pascal 3D editor](./docs/images/articraft-editor-hero.webp)
+
 A standalone reference plugin showing how to integrate Articraft with Pascal
 Editor through the public Plugin API. It can browse a host-provided mirror of
 Articraft-10K, place URDF assets as custom Pascal nodes, pose their
