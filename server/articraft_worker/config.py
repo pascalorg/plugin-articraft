@@ -42,7 +42,13 @@ class Settings:
                 if provider == self.default_provider and self.default_model
                 else fallback_model
             )
-            models.append({"provider": provider, "model": model, "label": label})
+            models.append(
+                {
+                    "provider": provider,
+                    "model": model,
+                    "label": label if model == fallback_model else model,
+                }
+            )
         return models
 
 
