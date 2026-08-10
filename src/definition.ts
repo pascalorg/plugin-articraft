@@ -1,4 +1,6 @@
 import type { HandleDescriptor, NodeDefinition, ParametricDescriptor } from '@pascal-app/core'
+import type { Object3D } from 'three'
+import { bakeArticraftAnimation } from './animation'
 import { buildArticraftFloorplan } from './floorplan'
 import { ArticraftAssetNode } from './schema'
 
@@ -104,6 +106,8 @@ export const articraftAssetDefinition: Definition = {
   parametrics,
   handles: [rotateHandle],
   floorplan: buildArticraftFloorplan,
+  exportAnimation: (context: { node: ArticraftAssetNode; object: Object3D }) =>
+    bakeArticraftAnimation(context.node, context.object),
   renderer: { kind: 'parametric', module: () => import('./renderer') },
   preview: () => import('./preview'),
   tool: () => import('./tool'),

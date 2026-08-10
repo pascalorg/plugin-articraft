@@ -27,6 +27,8 @@ hosted service from the Articraft researchers.
   radians stay radians in scene data and are displayed as degrees only for people.
 - Persistent, selection-independent motion that smoothly sweeps every movable
   joint while keeping per-frame values transient.
+- Native looping glTF animation clips for those articulated joints when a Pascal
+  project is exported to GLB; the saved joint pose remains the file's rest pose.
 - A registry-native 2D footprint that follows each asset's persisted position,
   yaw, scale, selection, and highlight state in floor-plan view.
 - An optional reference studio backed by host-scoped Azure GPT Image 2 and Google

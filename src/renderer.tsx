@@ -22,6 +22,7 @@ import {
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { USDLoader } from 'three/examples/jsm/loaders/USDLoader.js'
 import URDFLoader from 'urdf-loader'
+import { markArticraftJointTarget } from './animation'
 import { motionValueAtTime, usePrefersReducedMotion } from './motion'
 import type { ArticraftAssetNode } from './schema'
 import { resolveArticraftRootTransform } from './transform'
@@ -81,7 +82,7 @@ export function ArticraftVisual({
     const load = async () => {
       const next =
         node.artifact.format === 'urdf'
-          ? await loadUrdf(node.artifact.url)
+          ? await loadUrdf(node.artifact.url, node.joints)
           : await loadUsdz(node.artifact.url, node.parts, node.joints)
       if (ghost) configureGhost(next.root)
       if (cancelled) {
@@ -148,7 +149,10 @@ export function ArticraftVisual({
   )
 }
 
-async function loadUrdf(url: string): Promise<LoadedArticulation> {
+async function loadUrdf(
+  url: string,
+  joints: ArticraftAssetNode['joints'],
+): Promise<LoadedArticulation> {
   const loader = new URDFLoader()
   loader.parseCollision = false
   loader.loadMeshCb = (meshUrl, manager, material, done) => {
@@ -169,6 +173,12 @@ async function loadUrdf(url: string): Promise<LoadedArticulation> {
     )
   }
   const robot = await loader.loadAsync(url)
+  for (const joint of joints) {
+    if (joint.type === 'fixed') continue
+    robot.setJointValue(joint.name, 0)
+    const target = robot.joints[joint.name]
+    if (target) markArticraftJointTarget(target, joint.name)
+  }
   robot.rotation.x = -Math.PI / 2
   markShadows(robot)
   return {
@@ -225,6 +235,7 @@ function buildUsdHierarchy(
     frame.position.fromArray(joint.origin.xyz)
     frame.rotation.set(...joint.origin.rpy, 'XYZ')
     const motion = new Group()
+    if (joint.type !== 'fixed') markArticraftJointTarget(motion, joint.name)
     frame.add(motion)
     motion.add(child)
     parent.add(frame)
