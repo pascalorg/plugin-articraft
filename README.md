@@ -23,6 +23,10 @@ hosted service from the Articraft researchers.
   normalized articulation graph, and current joint pose in the Pascal scene.
 - URDF + OBJ rendering for the CC BY 4.0 Articraft-10K dataset.
 - USDZ rendering for results produced by the Apache 2.0 mini-articraft SDK.
+- Reactive Pascal appearance integration: Colored preserves authored materials,
+  Solid swaps to cached Lambert variants, Monochrome follows the active furnishing
+  palette and scene theme, and host-controlled shadows/edges/post-processing apply
+  without plugin-specific quality toggles.
 - Live position, rotation, scale, and joint controls in the Pascal inspector;
   radians stay radians in scene data and are displayed as degrees only for people.
 - Persistent, selection-independent motion that smoothly sweeps every movable

@@ -7,11 +7,15 @@ import {
   useRegistry,
 } from '@pascal-app/core'
 import { EDITOR_LAYER } from '@pascal-app/editor'
-import { useNodeEvents } from '@pascal-app/viewer'
-import { useFrame, useThree } from '@react-three/fiber'
-import { useEffect, useRef, useState } from 'react'
 import {
-  Color,
+  createDefaultMaterial,
+  resolveSurfaceColor,
+  useNodeEvents,
+  useViewer,
+} from '@pascal-app/viewer'
+import { useFrame, useThree } from '@react-three/fiber'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
   Group,
   type Material,
   type Mesh,
@@ -23,14 +27,19 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { USDLoader } from 'three/examples/jsm/loaders/USDLoader.js'
 import URDFLoader from 'urdf-loader'
 import { markArticraftJointTarget } from './animation'
+import { createArticraftAppearanceController } from './appearance'
 import { motionValueAtTime, usePrefersReducedMotion } from './motion'
 import type { ArticraftAssetNode } from './schema'
 import { resolveArticraftRootTransform } from './transform'
 import type { ArticraftJoint } from './types'
 
-type LoadedArticulation = {
+type LoadedArticulationSource = {
   root: Object3D
   setJointValue: (name: string, value: number) => void
+}
+
+type LoadedArticulation = LoadedArticulationSource & {
+  appearance: ReturnType<typeof createArticraftAppearanceController>
 }
 
 export default function ArticraftRenderer({ node }: { node: ArticraftAssetNode }) {
@@ -68,6 +77,10 @@ export function ArticraftVisual({
   const [failed, setFailed] = useState(false)
   const invalidate = useThree((state) => state.invalidate)
   const reducedMotion = usePrefersReducedMotion()
+  const shading = useViewer((state) => state.shading)
+  const textures = useViewer((state) => state.textures)
+  const colorPreset = useViewer((state) => state.colorPreset)
+  const sceneTheme = useViewer((state) => state.sceneTheme)
   const shouldAnimate =
     (motionEnabled ?? node.motionEnabled) &&
     !reducedMotion &&
@@ -76,6 +89,7 @@ export function ArticraftVisual({
   useEffect(() => {
     let cancelled = false
     let owned: Object3D | null = null
+    let ownedAppearance: ReturnType<typeof createArticraftAppearanceController> | null = null
     setLoaded(null)
     setFailed(false)
 
@@ -85,12 +99,23 @@ export function ArticraftVisual({
           ? await loadUrdf(node.artifact.url, node.joints)
           : await loadUsdz(node.artifact.url, node.parts, node.joints)
       if (ghost) configureGhost(next.root)
+      const appearance = createArticraftAppearanceController(next.root)
+      const currentAppearance = useViewer.getState()
+      appearance.apply({
+        colorPreset: currentAppearance.colorPreset,
+        ghost,
+        sceneTheme: currentAppearance.sceneTheme,
+        shading: currentAppearance.shading,
+        textures: currentAppearance.textures,
+      })
       if (cancelled) {
+        appearance.dispose()
         disposeObject(next.root)
         return
       }
       owned = next.root
-      setLoaded(next)
+      ownedAppearance = appearance
+      setLoaded({ ...next, appearance })
       invalidate()
     }
 
@@ -103,9 +128,18 @@ export function ArticraftVisual({
 
     return () => {
       cancelled = true
-      if (owned) disposeObject(owned)
+      if (owned) {
+        ownedAppearance?.dispose()
+        disposeObject(owned)
+      }
     }
   }, [ghost, invalidate, node.artifact.format, node.artifact.url, node.joints, node.parts])
+
+  useLayoutEffect(() => {
+    if (!loaded) return
+    loaded.appearance.apply({ colorPreset, ghost, sceneTheme, shading, textures })
+    invalidate()
+  }, [colorPreset, ghost, invalidate, loaded, sceneTheme, shading, textures])
 
   useEffect(() => {
     if (!loaded) return
@@ -129,6 +163,23 @@ export function ArticraftVisual({
     invalidate()
   })
 
+  const fallbackMaterial = useMemo(() => {
+    const color = failed
+      ? '#ef4444'
+      : textures
+        ? '#8b5cf6'
+        : resolveSurfaceColor('furnishing', colorPreset, sceneTheme)
+    const material = createDefaultMaterial(color, 1, textures ? shading : 'solid')
+    material.depthWrite = !ghost
+    material.opacity = failed ? 0.3 : 0.2
+    material.transparent = true
+    if ('wireframe' in material) material.wireframe = true
+    material.needsUpdate = true
+    return material
+  }, [colorPreset, failed, ghost, sceneTheme, shading, textures])
+
+  useEffect(() => () => fallbackMaterial.dispose(), [fallbackMaterial])
+
   if (loaded) return <primitive object={loaded.root} />
 
   return (
@@ -138,13 +189,7 @@ export function ArticraftVisual({
       raycast={ghost ? () => undefined : undefined}
     >
       <boxGeometry args={node.dimensions} />
-      <meshStandardMaterial
-        color={failed ? '#ef4444' : '#8b5cf6'}
-        depthWrite={!ghost}
-        opacity={failed ? 0.3 : 0.2}
-        transparent
-        wireframe
-      />
+      <primitive attach="material" object={fallbackMaterial} />
     </mesh>
   )
 }
@@ -152,7 +197,7 @@ export function ArticraftVisual({
 async function loadUrdf(
   url: string,
   joints: ArticraftAssetNode['joints'],
-): Promise<LoadedArticulation> {
+): Promise<LoadedArticulationSource> {
   const loader = new URDFLoader()
   loader.parseCollision = false
   loader.loadMeshCb = (meshUrl, manager, material, done) => {
@@ -191,7 +236,7 @@ async function loadUsdz(
   url: string,
   parts: ArticraftAssetNode['parts'],
   joints: ArticraftAssetNode['joints'],
-): Promise<LoadedArticulation> {
+): Promise<LoadedArticulationSource> {
   const source = await new USDLoader().loadAsync(url)
   const root = buildUsdHierarchy(source, parts, joints)
   markShadows(root.root)
@@ -202,7 +247,7 @@ function buildUsdHierarchy(
   source: Group,
   parts: ArticraftAssetNode['parts'],
   joints: ArticraftAssetNode['joints'],
-): LoadedArticulation {
+): LoadedArticulationSource {
   if (parts.length === 0) {
     return { root: source, setJointValue: () => undefined }
   }
@@ -274,22 +319,11 @@ function markShadows(root: Object3D) {
 }
 
 function configureGhost(root: Object3D) {
-  const tint = new Color('#8b5cf6')
   root.traverse((object) => {
     object.layers.set(EDITOR_LAYER)
     object.raycast = () => undefined
     const mesh = object as Mesh
     if (!mesh.isMesh) return
-    const source = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-    const materials = source.map((material) => {
-      const clone = material.clone()
-      clone.transparent = true
-      clone.opacity = 0.58
-      clone.depthWrite = false
-      if ('color' in clone && clone.color instanceof Color) clone.color.lerp(tint, 0.35)
-      return clone
-    })
-    mesh.material = Array.isArray(mesh.material) ? materials : materials[0]!
     mesh.castShadow = false
     mesh.receiveShadow = false
   })

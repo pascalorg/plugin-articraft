@@ -18,6 +18,20 @@ registerEditorHostPanel(articraftHostPanel)
 The raw TypeScript package must be transpiled by the host. Keep React, Three.js,
 and all `@pascal-app/*` packages deduplicated through peer dependencies.
 
+## Viewer appearance and performance
+
+Articraft reads the host's `useViewer` appearance axes instead of persisting its
+own quality settings. Colored + Rendered restores the source URDF/USDZ materials;
+Colored + Solid reuses lightweight Lambert variants while retaining albedo maps
+and transparency; Monochrome uses Pascal's active `furnishing` role colour and
+scene theme. Variants are created once per authored material, reused across
+preference changes, and disposed with the loaded hierarchy.
+
+Committed assets stay on Pascal's scene layer, so the host's shadows, edge mode,
+SSGI, and denoise pipeline apply globally. Placement previews use the editor
+overlay layer and therefore remain outside the expensive scene depth/normal pass.
+The plugin intentionally exposes no duplicate graphics-quality controls.
+
 ## Same-origin browser API
 
 The panel calls these host routes:
