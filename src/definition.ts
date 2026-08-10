@@ -1,6 +1,7 @@
 import type { HandleDescriptor, NodeDefinition, ParametricDescriptor } from '@pascal-app/core'
 import type { Object3D } from 'three'
 import { bakeArticraftAnimation } from './animation'
+import { ARTICRAFT_ICON } from './brand'
 import { buildArticraftFloorplan } from './floorplan'
 import { ArticraftAssetNode } from './schema'
 
@@ -118,7 +119,7 @@ export const articraftAssetDefinition: Definition = {
   presentation: {
     label: 'Articraft asset',
     description: 'A poseable articulated URDF or USDZ asset from Articraft.',
-    icon: { kind: 'iconify', name: 'lucide:bot' },
+    icon: ARTICRAFT_ICON,
     paletteSection: 'furnish',
     hidden: true,
   },

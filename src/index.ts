@@ -1,5 +1,6 @@
 import type { AnyNodeDefinition, Plugin } from '@pascal-app/core'
 import type { EditorHostPanel } from '@pascal-app/editor'
+import { ARTICRAFT_ICON } from './brand'
 import { articraftAssetDefinition } from './definition'
 
 export const articraftPlugin: Plugin = {
@@ -11,7 +12,7 @@ export const articraftPlugin: Plugin = {
 export const articraftHostPanel: EditorHostPanel = {
   id: 'pascal:articraft:catalog',
   label: 'Articraft',
-  icon: { kind: 'iconify', name: 'lucide:bot' },
+  icon: ARTICRAFT_ICON,
   component: () => import('./panel'),
   kinds: ['articraft:asset'],
   pluginId: articraftPlugin.id,
