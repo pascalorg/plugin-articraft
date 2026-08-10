@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { isCatalogItem, parseCatalogResponse, parseReferenceRender } from './api'
+import {
+  isCatalogItem,
+  parseCatalogResponse,
+  parseGenerationConfiguration,
+  parseReferenceRender,
+} from './api'
 
 const item = {
   id: 'globe',
@@ -68,5 +73,19 @@ describe('Articraft API parsing', () => {
         model: 'gpt-image-2',
       }),
     ).toThrow('project file')
+  })
+
+  test('accepts the host-selected articulation engine', () => {
+    expect(
+      parseGenerationConfiguration({
+        generation: { ready: true, provider: 'openai', model: 'gpt-5.6' },
+      }),
+    ).toEqual({ ready: true, provider: 'openai', model: 'gpt-5.6' })
+
+    expect(() =>
+      parseGenerationConfiguration({
+        generation: { ready: true, provider: 'unknown', model: 'custom' },
+      }),
+    ).toThrow('engine configuration')
   })
 })

@@ -47,6 +47,31 @@ def test_generation_rejects_disallowed_provider(tmp_path: Path) -> None:
     assert response.json() == {"detail": "Provider is not allowed"}
 
 
+def test_generation_uses_worker_default_provider_and_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    generation_started = threading.Event()
+    selected: dict[str, object] = {}
+
+    async def capture_generation(**values: object) -> None:
+        selected.update(values)
+        generation_started.set()
+        raise RuntimeError("expected test failure")
+
+    monkeypatch.setattr("articraft_worker.app.generate_item", capture_generation)
+    with TestClient(create_app(settings(tmp_path))) as client:
+        created = client.post(
+            "/v1/generations",
+            headers={"authorization": "Bearer test-worker-key"},
+            data={"prompt": "a folding lamp"},
+        )
+        assert created.status_code == 200
+        assert generation_started.wait(0.5)
+        assert selected["provider"] == "openai"
+        assert selected["model"] == "gpt-5.6"
+
+
 def test_generation_keeps_status_endpoint_responsive(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

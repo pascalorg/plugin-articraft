@@ -3,6 +3,8 @@ import type {
   ArticraftCatalogResponse,
   ArticraftCategory,
   ArticraftGeneration,
+  ArticraftGenerationConfiguration,
+  ArticraftGenerationProvider,
   ArticraftProjectImage,
   ArticraftReferenceProvider,
   ArticraftReferenceRender,
@@ -112,6 +114,7 @@ export async function createReferenceRender(input: {
   projectId: string
   prompt: string
   provider: ArticraftReferenceProvider
+  signal?: AbortSignal
 }): Promise<ArticraftReferenceRender> {
   const body = new FormData()
   body.set('projectId', input.projectId)
@@ -121,12 +124,27 @@ export async function createReferenceRender(input: {
   const response = await fetch(`${ARTICRAFT_API_BASE}/references`, {
     method: 'POST',
     body,
+    signal: input.signal,
   })
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
     throw new Error(responseError(object(payload), response.status, 'Reference generation failed'))
   }
   return parseReferenceRender(payload)
+}
+
+export async function fetchGenerationConfiguration(
+  signal?: AbortSignal,
+): Promise<ArticraftGenerationConfiguration> {
+  const response = await fetch(`${ARTICRAFT_API_BASE}/configuration`, {
+    cache: 'no-store',
+    signal,
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(responseError(object(payload), response.status, 'Engine status failed'))
+  }
+  return parseGenerationConfiguration(payload)
 }
 
 export async function createGeneration(form: FormData): Promise<ArticraftGeneration> {
@@ -200,6 +218,25 @@ export function parseReferenceRender(value: unknown): ArticraftReferenceRender {
     provider: render.provider as ArticraftReferenceProvider,
     model: render.model,
     projectImage: projectImage as ArticraftProjectImage,
+  }
+}
+
+export function parseGenerationConfiguration(value: unknown): ArticraftGenerationConfiguration {
+  const configuration = object(object(value)?.generation)
+  if (
+    !configuration ||
+    typeof configuration.ready !== 'boolean' ||
+    !['openai', 'anthropic', 'gemini', 'openrouter'].includes(
+      String(configuration.provider),
+    ) ||
+    typeof configuration.model !== 'string'
+  ) {
+    throw new Error('The Articraft host returned an invalid engine configuration.')
+  }
+  return {
+    model: configuration.model,
+    provider: configuration.provider as ArticraftGenerationProvider,
+    ready: configuration.ready,
   }
 }
 

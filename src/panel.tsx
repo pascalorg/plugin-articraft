@@ -20,6 +20,7 @@ import {
   createReferenceRender,
   fetchCatalog,
   fetchGeneration,
+  fetchGenerationConfiguration,
   fetchProjectImages,
 } from './api'
 import { useArticraftStore } from './store'
@@ -27,6 +28,7 @@ import type {
   ArticraftCatalogItem,
   ArticraftCategory,
   ArticraftGeneration,
+  ArticraftGenerationConfiguration,
   ArticraftProjectImage,
   ArticraftReferenceProvider,
   ArticraftReferenceRender,
@@ -740,8 +742,6 @@ function CatalogSkeleton() {
 function Generate() {
   const projectId = useViewer((state) => state.projectId)
   const [prompt, setPrompt] = useState('')
-  const [provider, setProvider] = useState('openai')
-  const [model, setModel] = useState('')
   const [localImage, setLocalImage] = useState<File | null>(null)
   const [projectImage, setProjectImage] = useState<ArticraftProjectImage | null>(null)
   const [referenceRender, setReferenceRender] = useState<ArticraftReferenceRender | null>(null)
@@ -753,11 +753,16 @@ function Generate() {
   const [referencePrompt, setReferencePrompt] = useState('')
   const [referenceProvider, setReferenceProvider] =
     useState<ArticraftReferenceProvider>('azure-openai')
+  const [configuration, setConfiguration] = useState<ArticraftGenerationConfiguration | null>(null)
+  const [configurationLoading, setConfigurationLoading] = useState(true)
   const [job, setJob] = useState<ArticraftGeneration | null>(null)
   const [error, setError] = useState('')
+  const [referenceNotice, setReferenceNotice] = useState('')
+  const [referenceElapsed, setReferenceElapsed] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [generatingReference, setGeneratingReference] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const referenceController = useRef<AbortController | null>(null)
 
   const localPreview = useMemo(
     () => (localImage ? URL.createObjectURL(localImage) : null),
@@ -776,6 +781,39 @@ function Generate() {
     localImage?.name ??
     projectImage?.name ??
     'Reference image'
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setConfigurationLoading(true)
+    void fetchGenerationConfiguration(controller.signal)
+      .then(setConfiguration)
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(errorMessage(cause))
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setConfigurationLoading(false)
+      })
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    if (!generatingReference) {
+      setReferenceElapsed(0)
+      return
+    }
+    const startedAt = Date.now()
+    const timer = window.setInterval(() => {
+      setReferenceElapsed(Math.floor((Date.now() - startedAt) / 1000))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [generatingReference])
+
+  useEffect(
+    () => () => {
+      referenceController.current?.abort()
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!projectId) return
@@ -823,20 +861,26 @@ function Generate() {
 
   const generateReference = async () => {
     if (!(projectId && referencePrompt.trim())) return
+    referenceController.current?.abort()
+    const controller = new AbortController()
+    referenceController.current = controller
     setError('')
+    setReferenceNotice('')
     setGeneratingReference(true)
     try {
       const source = localImage
         ? localImage
         : referenceUrl
-          ? await imageFileFromUrl(referenceUrl, referenceName)
+          ? await imageFileFromUrl(referenceUrl, referenceName, controller.signal)
           : undefined
       const render = await createReferenceRender({
         ...(source ? { image: source } : {}),
         projectId,
         prompt: referencePrompt.trim(),
         provider: referenceProvider,
+        signal: controller.signal,
       })
+      if (controller.signal.aborted) return
       setReferenceRender(render)
       setLocalImage(null)
       setProjectImage(null)
@@ -846,10 +890,22 @@ function Generate() {
       ])
       setReferenceDialogOpen(false)
     } catch (cause) {
-      setError(errorMessage(cause))
+      if (isAbortError(cause)) {
+        setReferenceNotice('Reference generation canceled. Nothing was saved.')
+      } else {
+        setError(errorMessage(cause))
+      }
     } finally {
-      setGeneratingReference(false)
+      if (referenceController.current === controller) {
+        referenceController.current = null
+        setGeneratingReference(false)
+      }
     }
+  }
+
+  const cancelReference = () => {
+    setReferenceNotice('Canceling generation…')
+    referenceController.current?.abort()
   }
 
   const submit = async (event: FormEvent) => {
@@ -858,8 +914,6 @@ function Generate() {
     setSubmitting(true)
     const form = new FormData()
     form.set('prompt', prompt)
-    form.set('provider', provider)
-    if (model.trim()) form.set('model', model.trim())
     try {
       if (localImage) {
         form.set('image', localImage)
@@ -1081,6 +1135,7 @@ function Generate() {
             icon="sparkles"
             label={referenceRender ? 'Refine reference' : 'Generate reference'}
             onClick={() => {
+              setReferenceNotice('')
               if (!referencePrompt && prompt.trim()) {
                 setReferencePrompt(
                   `Clean product reference of ${prompt.trim()}. Single articulated object, fully visible, neutral studio background, clear separation between moving parts, no text.`,
@@ -1120,7 +1175,10 @@ function Generate() {
               </div>
               <button
                 aria-label="Close reference studio"
-                onClick={() => setReferenceDialogOpen(false)}
+                onClick={() => {
+                  if (generatingReference) cancelReference()
+                  setReferenceDialogOpen(false)
+                }}
                 style={iconButtonStyle()}
                 type="button"
               >
@@ -1135,12 +1193,14 @@ function Generate() {
               <ReferenceProviderButton
                 active={referenceProvider === 'azure-openai'}
                 detail="GPT Image 2"
+                disabled={generatingReference}
                 label="Azure OpenAI"
                 onClick={() => setReferenceProvider('azure-openai')}
               />
               <ReferenceProviderButton
                 active={referenceProvider === 'google'}
                 detail="Nano Banana 2"
+                disabled={generatingReference}
                 label="Google"
                 onClick={() => setReferenceProvider('google')}
               />
@@ -1149,6 +1209,7 @@ function Generate() {
               Image prompt
               <textarea
                 aria-label="Reference image prompt"
+                disabled={generatingReference}
                 onChange={(event) => setReferencePrompt(event.target.value)}
                 placeholder="A studio product photograph of a compact articulated desk lamp…"
                 rows={4}
@@ -1170,18 +1231,27 @@ function Generate() {
                 The selected image will be used as visual context.
               </div>
             )}
-            <button
-              disabled={!(projectId && referencePrompt.trim()) || generatingReference}
-              onClick={() => void generateReference()}
-              style={{
-                ...primaryButton,
-                opacity: !(projectId && referencePrompt.trim()) || generatingReference ? 0.48 : 1,
-              }}
-              type="button"
-            >
-              <Icon color="#17120f" name="sparkles" size={14} />
-              {generatingReference ? 'Generating and saving…' : 'Generate and save reference'}
-            </button>
+            {generatingReference ? (
+              <ReferenceGenerationProgress
+                elapsed={referenceElapsed}
+                onCancel={cancelReference}
+                provider={referenceProvider}
+              />
+            ) : (
+              <button
+                disabled={!(projectId && referencePrompt.trim())}
+                onClick={() => void generateReference()}
+                style={{
+                  ...primaryButton,
+                  opacity: !(projectId && referencePrompt.trim()) ? 0.48 : 1,
+                }}
+                type="button"
+              >
+                <Icon color="#17120f" name="sparkles" size={14} />
+                Generate and save reference
+              </button>
+            )}
+            {referenceNotice && <Status>{referenceNotice}</Status>}
           </div>
         )}
       </Step>
@@ -1209,67 +1279,31 @@ function Generate() {
         </div>
       </Step>
 
-      <details
-        style={{
-          border: '1px solid var(--border)',
-          borderRadius: 11,
-          overflow: 'hidden',
-        }}
-      >
-        <summary
-          style={{
-            cursor: 'pointer',
-            fontSize: 10,
-            fontWeight: 650,
-            padding: '9px 10px',
-          }}
-        >
-          Worker settings
-        </summary>
-        <div
-          style={{
-            borderTop: '1px solid var(--border)',
-            display: 'grid',
-            gap: 8,
-            gridTemplateColumns: '1fr 1fr',
-            padding: 10,
-          }}
-        >
-          <label style={labelStyle}>
-            Provider
-            <select
-              onChange={(event) => setProvider(event.target.value)}
-              style={inputStyle}
-              value={provider}
-            >
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="gemini">Gemini</option>
-              <option value="openrouter">OpenRouter</option>
-            </select>
-          </label>
-          <label style={labelStyle}>
-            Model override
-            <input
-              onChange={(event) => setModel(event.target.value)}
-              placeholder="Worker default"
-              style={inputStyle}
-              value={model}
-            />
-          </label>
-        </div>
-      </details>
+      <ArticraftEngine configuration={configuration} loading={configurationLoading} />
 
       <button
-        disabled={submitting || !prompt.trim() || generatingReference}
+        disabled={
+          submitting ||
+          !prompt.trim() ||
+          generatingReference ||
+          configurationLoading ||
+          !configuration?.ready
+        }
         style={{
           ...primaryButton,
-          opacity: submitting || !prompt.trim() || generatingReference ? 0.48 : 1,
+          opacity:
+            submitting ||
+            !prompt.trim() ||
+            generatingReference ||
+            configurationLoading ||
+            !configuration?.ready
+              ? 0.48
+              : 1,
         }}
         type="submit"
       >
         <Icon color="#17120f" name="cube" size={14} />
-        {submitting ? 'Preparing reference…' : 'Generate articulated asset'}
+        {submitting ? 'Starting Articraft…' : 'Generate articulated asset'}
       </button>
 
       {job && (
@@ -1325,20 +1359,185 @@ function Step({
   )
 }
 
+function ArticraftEngine({
+  configuration,
+  loading,
+}: {
+  configuration: ArticraftGenerationConfiguration | null
+  loading: boolean
+}) {
+  const ready = configuration?.ready === true
+  return (
+    <section
+      aria-label="Articraft engine"
+      style={{
+        alignItems: 'center',
+        background: ready
+          ? 'color-mix(in srgb, #ff6b3d 7%, var(--background))'
+          : 'var(--background)',
+        border: `1px solid ${ready ? 'color-mix(in srgb, #ff6b3d 30%, var(--border))' : 'var(--border)'}`,
+        borderRadius: 11,
+        display: 'flex',
+        gap: 9,
+        padding: '9px 10px',
+      }}
+    >
+      <div
+        style={{
+          alignItems: 'center',
+          background: ready ? ACCENT : 'var(--muted)',
+          borderRadius: 8,
+          color: ready ? '#17120f' : 'var(--muted-foreground)',
+          display: 'flex',
+          height: 30,
+          justifyContent: 'center',
+          width: 30,
+        }}
+      >
+        <Icon name="cube" size={15} />
+      </div>
+      <div style={{ display: 'flex', flex: 1, flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <span style={{ fontSize: 10, fontWeight: 700 }}>Articraft engine</span>
+        <span
+          style={{
+            color: 'var(--muted-foreground)',
+            fontSize: 9,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {loading
+            ? 'Checking the generation worker…'
+            : ready && configuration
+              ? `${providerLabel(configuration.provider)} · ${configuration.model}`
+              : 'The generation worker is unavailable on this host.'}
+        </span>
+      </div>
+      <span
+        style={{
+          border: `1px solid ${ready ? ACCENT : 'var(--border)'}`,
+          borderRadius: 999,
+          color: ready ? ACCENT : 'var(--muted-foreground)',
+          fontSize: 8,
+          fontWeight: 750,
+          padding: '3px 6px',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {loading ? 'CHECKING' : ready ? 'AUTO' : 'OFFLINE'}
+      </span>
+    </section>
+  )
+}
+
+function ReferenceGenerationProgress({
+  elapsed,
+  onCancel,
+  provider,
+}: {
+  elapsed: number
+  onCancel: () => void
+  provider: ArticraftReferenceProvider
+}) {
+  return (
+    <div
+      aria-live="polite"
+      data-articraft-reference-progress
+      role="status"
+      style={{
+        background: 'var(--background)',
+        border: '1px solid color-mix(in srgb, #ff6b3d 42%, var(--border))',
+        borderRadius: 11,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 9,
+        overflow: 'hidden',
+        padding: 10,
+        position: 'relative',
+      }}
+    >
+      <style>{`@keyframes articraft-reference-sweep { from { transform: translateX(-110%); } to { transform: translateX(310%); } }`}</style>
+      <div style={{ alignItems: 'center', display: 'flex', gap: 8 }}>
+        <div
+          aria-hidden
+          style={{
+            alignItems: 'center',
+            background: ACCENT,
+            borderRadius: 999,
+            color: '#17120f',
+            display: 'flex',
+            height: 27,
+            justifyContent: 'center',
+            width: 27,
+          }}
+        >
+          <Icon name="sparkles" size={13} />
+        </div>
+        <div style={{ display: 'flex', flex: 1, flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontSize: 10, fontWeight: 700 }}>{referenceProgressLabel(elapsed)}</span>
+          <span style={{ color: 'var(--muted-foreground)', fontSize: 8 }}>
+            {provider === 'azure-openai' ? 'Azure OpenAI · GPT Image 2' : 'Google · Nano Banana 2'}
+            {' · '}
+            {formatElapsed(elapsed)}
+          </span>
+        </div>
+      </div>
+      <div
+        aria-hidden
+        style={{
+          background: 'color-mix(in srgb, #ff6b3d 14%, var(--muted))',
+          borderRadius: 999,
+          height: 3,
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            animation: 'articraft-reference-sweep 1.35s ease-in-out infinite',
+            background: ACCENT,
+            borderRadius: 999,
+            height: '100%',
+            width: '34%',
+          }}
+        />
+      </div>
+      <div
+        style={{
+          alignItems: 'center',
+          color: 'var(--muted-foreground)',
+          display: 'flex',
+          fontSize: 8,
+          gap: 7,
+          justifyContent: 'space-between',
+        }}
+      >
+        <span>The image is saved to Files only after generation finishes.</span>
+        <button onClick={onCancel} style={secondaryButton(false)} type="button">
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function ReferenceProviderButton({
   active,
   detail,
+  disabled = false,
   label,
   onClick,
 }: {
   active: boolean
   detail: string
+  disabled?: boolean
   label: string
   onClick: () => void
 }) {
   return (
     <button
       aria-pressed={active}
+      disabled={disabled}
       onClick={onClick}
       style={{
         alignItems: 'flex-start',
@@ -1348,11 +1547,12 @@ function ReferenceProviderButton({
         border: `1px solid ${active ? ACCENT : 'var(--border)'}`,
         borderRadius: 999,
         color: active ? ACCENT : 'var(--foreground)',
-        cursor: 'pointer',
+        cursor: disabled ? 'default' : 'pointer',
         display: 'flex',
         flexDirection: 'column',
         gap: 1,
         minWidth: 0,
+        opacity: disabled ? 0.58 : 1,
         padding: '7px 10px',
         textAlign: 'left',
       }}
@@ -1511,8 +1711,8 @@ function useDebouncedValue<T>(value: T, delay: number): T {
   return debounced
 }
 
-async function imageFileFromUrl(url: string, name: string): Promise<File> {
-  const response = await fetch(url)
+async function imageFileFromUrl(url: string, name: string, signal?: AbortSignal): Promise<File> {
+  const response = await fetch(url, { signal })
   if (!response.ok) throw new Error(`Could not read the selected reference (${response.status}).`)
   const blob = await response.blob()
   const extension = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg'
@@ -1523,6 +1723,32 @@ async function imageFileFromUrl(url: string, name: string): Promise<File> {
   return new File([blob], `${basename || 'reference'}.${extension}`, {
     type: blob.type,
   })
+}
+
+function providerLabel(provider: ArticraftGenerationConfiguration['provider']): string {
+  return {
+    anthropic: 'Anthropic',
+    gemini: 'Google Gemini',
+    openai: 'OpenAI',
+    openrouter: 'OpenRouter',
+  }[provider]
+}
+
+function referenceProgressLabel(elapsed: number): string {
+  if (elapsed < 3) return 'Connecting to the image studio…'
+  if (elapsed < 15) return 'Composing the articulated reference…'
+  if (elapsed < 35) return 'Rendering shape, materials, and joints…'
+  return 'Finishing the image and saving to Files…'
+}
+
+function formatElapsed(seconds: number): string {
+  const minutes = Math.floor(seconds / 60)
+  const remainder = String(seconds % 60).padStart(2, '0')
+  return `${minutes}:${remainder}`
+}
+
+function isAbortError(value: unknown): boolean {
+  return value instanceof Error && value.name === 'AbortError'
 }
 
 function errorMessage(value: unknown): string {

@@ -85,6 +85,14 @@ export type ArticraftProjectImage = {
 
 export type ArticraftReferenceProvider = 'azure-openai' | 'google'
 
+export type ArticraftGenerationProvider = 'openai' | 'anthropic' | 'gemini' | 'openrouter'
+
+export type ArticraftGenerationConfiguration = {
+  model: string
+  provider: ArticraftGenerationProvider
+  ready: boolean
+}
+
 export type ArticraftReferenceRender = {
   id: string
   imageUrl: string

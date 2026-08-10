@@ -25,14 +25,16 @@ The panel calls these host routes:
 ```text
 GET  /api/plugins/articraft/catalog?q=&page=1&pageSize=24
 GET  /api/plugins/articraft/files?projectId=:projectId
+GET  /api/plugins/articraft/configuration
 POST /api/plugins/articraft/references
 POST /api/plugins/articraft/generations
 GET  /api/plugins/articraft/generations/:jobId
 ```
 
 Catalog responses use `ArticraftCatalogResponse`. Generation creation accepts
-multipart form data (`prompt`, optional `image`, `provider`, optional `model`)
-and returns `{ id, status }`. Job status returns an `item` with the same
+multipart form data (`prompt`, optional `image`, optional `provider`, optional
+`model`) and returns `{ id, status }`. The host and worker select their configured
+OpenAI/GPT-5.6 default when those fields are absent. Job status returns an item with the same
 `ArticraftCatalogItem` shape when complete.
 
 Reference creation accepts multipart form data (`projectId`, `prompt`, `provider`,
@@ -77,6 +79,8 @@ Required worker environment:
 ```text
 ARTICRAFT_WORKER_API_KEY=
 ARTICRAFT_ALLOWED_PROVIDERS=openai,anthropic,gemini,openrouter
+ARTICRAFT_DEFAULT_PROVIDER=openai
+ARTICRAFT_DEFAULT_MODEL=gpt-5.6
 OPENAI_API_KEY=              # at least one provider credential
 ANTHROPIC_API_KEY=
 GEMINI_API_KEY=
@@ -86,6 +90,6 @@ SUPABASE_SERVICE_ROLE_KEY=
 ARTICRAFT_STORAGE_BUCKET=articraft-catalog
 ```
 
-Provider credits are spent by mini-articraft through whichever configured key
-the request selects. Keys stay in the worker environment and never cross the
-HTTP response boundary.
+Provider credits are spent by mini-articraft through the automatic default unless
+the host intentionally overrides it. Keys stay in the worker environment and never
+cross the HTTP response boundary.

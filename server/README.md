@@ -16,8 +16,12 @@ Supabase service role, and returns only the normalized plugin record.
 ```bash
 cp .env.example .env
 uv sync --extra test
-uv run uvicorn articraft_worker.app:create_app --factory --host 0.0.0.0 --port 8000
+uv run --env-file .env uvicorn articraft_worker.app:create_app --factory --host 0.0.0.0 --port 8000
 ```
+
+The worker selects `openai` with `gpt-5.6` when a request omits provider/model
+fields. Override `ARTICRAFT_DEFAULT_PROVIDER` and `ARTICRAFT_DEFAULT_MODEL` in the
+worker environment when another audited deployment should be automatic.
 
 Run tests with `uv run pytest`. The storage bucket must already exist and be
 publicly readable; the worker deliberately does not create or reconfigure it.

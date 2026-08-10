@@ -100,13 +100,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     async def create_generation(
         prompt: str = Form(min_length=1, max_length=2_000),
-        provider: str = Form(),
+        provider: str | None = Form(default=None, max_length=32),
         model: str | None = Form(default=None, max_length=160),
         image: UploadFile | None = File(default=None),
     ) -> GenerationResponse:
-        if provider not in resolved.allowed_providers:
+        selected_provider = (provider or resolved.default_provider).strip()
+        selected_model = (model or resolved.default_model or "").strip() or None
+        if selected_provider not in resolved.allowed_providers:
             raise HTTPException(status_code=400, detail="Provider is not allowed")
-        if image is not None and provider == "openrouter":
+        if image is not None and selected_provider == "openrouter":
             raise HTTPException(
                 status_code=400, detail="OpenRouter image generation is not supported"
             )
@@ -116,8 +118,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         job = Job(
             id=job_id,
             status="queued",
-            provider=provider,
-            model=model or None,
+            provider=selected_provider,
+            model=selected_model,
             prompt=prompt.strip(),
             reference_image=image_path.name if image_path is not None else None,
         )

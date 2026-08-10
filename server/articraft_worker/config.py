@@ -14,25 +14,33 @@ class Settings:
     storage_bucket: str
     jobs_dir: Path
     runs_dir: Path
+    default_provider: str = "openai"
+    default_model: str | None = "gpt-5.6"
     max_concurrent_jobs: int = 1
 
 
 def load_settings() -> Settings:
+    allowed_providers = frozenset(
+        value.strip()
+        for value in os.getenv(
+            "ARTICRAFT_ALLOWED_PROVIDERS",
+            "openai,anthropic,gemini,openrouter",
+        ).split(",")
+        if value.strip()
+    )
+    default_provider = os.getenv("ARTICRAFT_DEFAULT_PROVIDER", "openai").strip()
+    if default_provider not in allowed_providers:
+        raise RuntimeError("ARTICRAFT_DEFAULT_PROVIDER must be allowed")
     return Settings(
         api_key=_required("ARTICRAFT_WORKER_API_KEY"),
-        allowed_providers=frozenset(
-            value.strip()
-            for value in os.getenv(
-                "ARTICRAFT_ALLOWED_PROVIDERS",
-                "openai,anthropic,gemini,openrouter",
-            ).split(",")
-            if value.strip()
-        ),
+        allowed_providers=allowed_providers,
         storage_url=_required("SUPABASE_URL").rstrip("/"),
         storage_service_key=_required("SUPABASE_SERVICE_ROLE_KEY"),
         storage_bucket=os.getenv("ARTICRAFT_STORAGE_BUCKET", "articraft-catalog"),
         jobs_dir=Path(os.getenv("ARTICRAFT_JOBS_DIR", ".articraft/jobs")),
         runs_dir=Path(os.getenv("ARTICRAFT_RUNS_DIR", ".articraft/runs")),
+        default_provider=default_provider,
+        default_model=os.getenv("ARTICRAFT_DEFAULT_MODEL", "gpt-5.6").strip() or None,
         max_concurrent_jobs=_bounded_integer(
             "ARTICRAFT_MAX_CONCURRENT_JOBS", default=1, minimum=1, maximum=4
         ),

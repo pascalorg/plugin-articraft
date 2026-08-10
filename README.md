@@ -43,9 +43,9 @@ credentials. Hosts expose the same-origin broker described in
   model files from the public catalog storage origin configured by that host.
   That storage provider receives ordinary request metadata such as IP address
   and user agent.
-- Generation sends the prompt, selected provider/model, and optional reference
-  image to the Pascal host, its configured mini-articraft worker, and the
-  selected model provider. Provider handling is governed by that provider's
+- Generation sends the prompt and optional reference image to the Pascal host,
+  which applies its visible automatic provider/model choice before calling the
+  configured mini-articraft worker. Provider handling is governed by that provider's
   terms and the host operator's account.
 - The reference worker persists the prompt, job status, and generated source/run
   metadata on its private durable volume. It publishes a normalized manifest
