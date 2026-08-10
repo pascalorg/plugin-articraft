@@ -78,13 +78,42 @@ describe('Articraft API parsing', () => {
   test('accepts the host-selected articulation engine', () => {
     expect(
       parseGenerationConfiguration({
-        generation: { ready: true, provider: 'openai', model: 'gpt-5.6' },
+        generation: {
+          ready: true,
+          provider: 'openai',
+          model: 'gpt-5.6',
+          models: [
+            { provider: 'openai', model: 'gpt-5.6', label: 'GPT-5.6' },
+            {
+              provider: 'anthropic',
+              model: 'claude-sonnet-5',
+              label: 'Claude Sonnet 5',
+            },
+          ],
+        },
       }),
-    ).toEqual({ ready: true, provider: 'openai', model: 'gpt-5.6' })
+    ).toEqual({
+      ready: true,
+      provider: 'openai',
+      model: 'gpt-5.6',
+      models: [
+        { provider: 'openai', model: 'gpt-5.6', label: 'GPT-5.6' },
+        {
+          provider: 'anthropic',
+          model: 'claude-sonnet-5',
+          label: 'Claude Sonnet 5',
+        },
+      ],
+    })
 
     expect(() =>
       parseGenerationConfiguration({
-        generation: { ready: true, provider: 'unknown', model: 'custom' },
+        generation: {
+          ready: true,
+          provider: 'unknown',
+          model: 'custom',
+          models: [{ provider: 'unknown', model: 'custom', label: 'Custom' }],
+        },
       }),
     ).toThrow('engine configuration')
   })

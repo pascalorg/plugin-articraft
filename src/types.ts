@@ -87,8 +87,15 @@ export type ArticraftReferenceProvider = 'azure-openai' | 'google'
 
 export type ArticraftGenerationProvider = 'openai' | 'anthropic' | 'gemini' | 'openrouter'
 
+export type ArticraftGenerationModel = {
+  label: string
+  model: string
+  provider: ArticraftGenerationProvider
+}
+
 export type ArticraftGenerationConfiguration = {
   model: string
+  models: ArticraftGenerationModel[]
   provider: ArticraftGenerationProvider
   ready: boolean
 }
@@ -102,11 +109,28 @@ export type ArticraftReferenceRender = {
   status: 'completed'
 }
 
-export type ArticraftGenerationStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+export type ArticraftGenerationStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
 
 export type ArticraftGeneration = {
   id: string
   status: ArticraftGenerationStatus
   message?: string
   item?: ArticraftCatalogItem
+}
+
+export type ArticraftGenerationReference =
+  | { file: File; kind: 'file' }
+  | { image: ArticraftProjectImage; kind: 'project' }
+
+export type ArticraftGenerationDraft = {
+  model: string
+  prompt: string
+  provider: ArticraftGenerationProvider
+  reference?: ArticraftGenerationReference
+}
+
+export type ArticraftGenerationQueueItem = {
+  createdAt: number
+  draft: ArticraftGenerationDraft
+  generation: ArticraftGeneration
 }

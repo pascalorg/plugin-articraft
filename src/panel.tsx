@@ -16,6 +16,7 @@ import {
   useState,
 } from 'react'
 import {
+  cancelGeneration,
   createGeneration,
   createReferenceRender,
   fetchCatalog,
@@ -29,6 +30,9 @@ import type {
   ArticraftCategory,
   ArticraftGeneration,
   ArticraftGenerationConfiguration,
+  ArticraftGenerationDraft,
+  ArticraftGenerationModel,
+  ArticraftGenerationQueueItem,
   ArticraftProjectImage,
   ArticraftReferenceProvider,
   ArticraftReferenceRender,
@@ -755,13 +759,19 @@ function Generate() {
     useState<ArticraftReferenceProvider>('azure-openai')
   const [configuration, setConfiguration] = useState<ArticraftGenerationConfiguration | null>(null)
   const [configurationLoading, setConfigurationLoading] = useState(true)
-  const [job, setJob] = useState<ArticraftGeneration | null>(null)
+  const [selectedModelKey, setSelectedModelKey] = useState('')
   const [error, setError] = useState('')
   const [referenceNotice, setReferenceNotice] = useState('')
   const [referenceElapsed, setReferenceElapsed] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [generatingReference, setGeneratingReference] = useState(false)
+  const [canceling, setCanceling] = useState<string[]>([])
+  const generationQueue = useArticraftStore((state) => state.generationQueue)
+  const addGeneration = useArticraftStore((state) => state.addGeneration)
+  const removeGeneration = useArticraftStore((state) => state.removeGeneration)
+  const updateGeneration = useArticraftStore((state) => state.updateGeneration)
   const fileInput = useRef<HTMLInputElement>(null)
+  const queueSection = useRef<HTMLElement>(null)
   const referenceController = useRef<AbortController | null>(null)
 
   const localPreview = useMemo(
@@ -786,7 +796,17 @@ function Generate() {
     const controller = new AbortController()
     setConfigurationLoading(true)
     void fetchGenerationConfiguration(controller.signal)
-      .then(setConfiguration)
+      .then((next) => {
+        setConfiguration(next)
+        setSelectedModelKey((current) =>
+          next.models.some((model) => generationModelKey(model) === current)
+            ? current
+            : generationModelKey({
+                model: next.model,
+                provider: next.provider,
+              }),
+        )
+      })
       .catch((cause) => {
         if (!controller.signal.aborted) setError(errorMessage(cause))
       })
@@ -830,18 +850,35 @@ function Generate() {
     return () => controller.abort()
   }, [projectId])
 
+  const activeGenerationIds = generationQueue
+    .filter((entry) => isGenerationActive(entry.generation))
+    .map((entry) => entry.generation.id)
+    .join('\u0000')
+
   useEffect(() => {
-    if (!(job && ['queued', 'running'].includes(job.status))) return
-    const timer = window.setTimeout(() => {
-      void fetchGeneration(job.id)
-        .then((next) => {
-          setJob(next)
-          if (next.status === 'succeeded' && next.item) arm(next.item)
-        })
-        .catch((cause) => setError(errorMessage(cause)))
-    }, 2000)
-    return () => window.clearTimeout(timer)
-  }, [job])
+    if (!activeGenerationIds) return
+    let disposed = false
+    let polling = false
+    const poll = async () => {
+      if (polling) return
+      polling = true
+      try {
+        const generations = await Promise.all(
+          activeGenerationIds.split('\u0000').map((id) => fetchGeneration(id)),
+        )
+        if (!disposed) generations.forEach(updateGeneration)
+      } catch (cause) {
+        if (!disposed) setError(errorMessage(cause))
+      } finally {
+        polling = false
+      }
+    }
+    const timer = window.setInterval(() => void poll(), 2000)
+    return () => {
+      disposed = true
+      window.clearInterval(timer)
+    }
+  }, [activeGenerationIds, updateGeneration])
 
   const chooseLocalImage = (file: File | undefined) => {
     if (!file) return
@@ -910,21 +947,85 @@ function Generate() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
+    const selectedModel = configuration?.models.find(
+      (model) => generationModelKey(model) === selectedModelKey,
+    )
+    if (!selectedModel) {
+      setError('Choose an available Articraft model.')
+      return
+    }
     setError('')
     setSubmitting(true)
     const form = new FormData()
-    form.set('prompt', prompt)
+    const cleanPrompt = prompt.trim()
+    form.set('prompt', cleanPrompt)
+    form.set('provider', selectedModel.provider)
+    form.set('model', selectedModel.model)
+    const draft: ArticraftGenerationDraft = {
+      model: selectedModel.model,
+      prompt: cleanPrompt,
+      provider: selectedModel.provider,
+      ...(localImage
+        ? { reference: { file: localImage, kind: 'file' as const } }
+        : referenceRender
+          ? {
+              reference: {
+                image: referenceRender.projectImage,
+                kind: 'project' as const,
+              },
+            }
+          : projectImage
+            ? { reference: { image: projectImage, kind: 'project' as const } }
+            : {}),
+    }
     try {
       if (localImage) {
         form.set('image', localImage)
       } else if (referenceUrl) {
         form.set('image', await imageFileFromUrl(referenceUrl, referenceName))
       }
-      setJob(await createGeneration(form))
+      const generation = await createGeneration(form)
+      addGeneration(generation, draft)
+      setPrompt('')
+      setLocalImage(null)
+      setProjectImage(null)
+      setReferenceRender(null)
+      setReferencePrompt('')
+      setReferenceNotice('')
+      window.requestAnimationFrame(() => queueSection.current?.scrollIntoView({ block: 'nearest' }))
     } catch (cause) {
       setError(errorMessage(cause))
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const editGeneration = (draft: ArticraftGenerationDraft) => {
+    setPrompt(draft.prompt)
+    setSelectedModelKey(generationModelKey(draft))
+    setReferenceRender(null)
+    setReferencePrompt('')
+    if (draft.reference?.kind === 'file') {
+      setLocalImage(draft.reference.file)
+      setProjectImage(null)
+    } else if (draft.reference?.kind === 'project') {
+      setProjectImage(draft.reference.image)
+      setLocalImage(null)
+    } else {
+      setLocalImage(null)
+      setProjectImage(null)
+    }
+  }
+
+  const cancelQueuedGeneration = async (generation: ArticraftGeneration) => {
+    setCanceling((current) => [...current, generation.id])
+    setError('')
+    try {
+      updateGeneration(await cancelGeneration(generation.id))
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      setCanceling((current) => current.filter((id) => id !== generation.id))
     }
   }
 
@@ -936,6 +1037,7 @@ function Generate() {
 
   return (
     <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
+      <style>{`@keyframes articraft-queue-pulse { from { opacity: .24; transform: scaleX(.42); } to { opacity: .72; transform: scaleX(1); } } @media (prefers-reduced-motion: reduce) { [data-articraft-active-progress] { animation: none !important; } }`}</style>
       <Step eyebrow="01 · Reference · Optional" title="Start with the object">
         {referenceUrl ? (
           <div
@@ -1188,7 +1290,11 @@ function Generate() {
             <div
               aria-label="Reference provider"
               role="group"
-              style={{ display: 'grid', gap: 6, gridTemplateColumns: '1fr 1fr' }}
+              style={{
+                display: 'grid',
+                gap: 6,
+                gridTemplateColumns: '1fr 1fr',
+              }}
             >
               <ReferenceProviderButton
                 active={referenceProvider === 'azure-openai'}
@@ -1256,6 +1362,17 @@ function Generate() {
         )}
       </Step>
 
+      {generationQueue.length > 0 && (
+        <GenerationQueue
+          canceling={canceling}
+          entries={generationQueue}
+          onCancel={(generation) => void cancelQueuedGeneration(generation)}
+          onEdit={editGeneration}
+          onRemove={removeGeneration}
+          sectionRef={queueSection}
+        />
+      )}
+
       <Step eyebrow="02 · Articulation" title="Describe what should move">
         <textarea
           aria-label="Prompt"
@@ -1279,7 +1396,12 @@ function Generate() {
         </div>
       </Step>
 
-      <ArticraftEngine configuration={configuration} loading={configurationLoading} />
+      <ArticraftEngine
+        configuration={configuration}
+        loading={configurationLoading}
+        onChange={setSelectedModelKey}
+        value={selectedModelKey}
+      />
 
       <button
         disabled={
@@ -1306,13 +1428,6 @@ function Generate() {
         {submitting ? 'Starting Articraft…' : 'Generate articulated asset'}
       </button>
 
-      {job && (
-        <Status error={job.status === 'failed'}>
-          {job.status === 'succeeded'
-            ? 'Asset ready and armed. Click the ground to place it.'
-            : (job.message ?? `Articraft generation ${job.status}…`)}
-        </Status>
-      )}
       {error && <Status error>{error}</Status>}
       <p
         style={{
@@ -1359,74 +1474,416 @@ function Step({
   )
 }
 
+function GenerationQueue({
+  canceling,
+  entries,
+  onCancel,
+  onEdit,
+  onRemove,
+  sectionRef,
+}: {
+  canceling: string[]
+  entries: ArticraftGenerationQueueItem[]
+  onCancel: (generation: ArticraftGeneration) => void
+  onEdit: (draft: ArticraftGenerationDraft) => void
+  onRemove: (id: string) => void
+  sectionRef: { current: HTMLElement | null }
+}) {
+  const activeCount = entries.filter((entry) => isGenerationActive(entry.generation)).length
+  return (
+    <section
+      aria-label="Generation queue"
+      ref={sectionRef}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        scrollMarginTop: 12,
+      }}
+    >
+      <div
+        style={{
+          alignItems: 'center',
+          display: 'flex',
+          justifyContent: 'space-between',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span
+            style={{
+              color: ACCENT,
+              fontSize: 8,
+              fontWeight: 750,
+              letterSpacing: '0.11em',
+            }}
+          >
+            GENERATION QUEUE
+          </span>
+          <h3 style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>Your Articraft runs</h3>
+        </div>
+        <span
+          style={{
+            border: '1px solid var(--border)',
+            borderRadius: 999,
+            color: 'var(--muted-foreground)',
+            fontSize: 8,
+            fontVariantNumeric: 'tabular-nums',
+            padding: '4px 7px',
+          }}
+        >
+          {activeCount > 0 ? `${activeCount} active` : `${entries.length} saved`}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {entries.map((entry) => (
+          <GenerationQueueCard
+            canceling={canceling.includes(entry.generation.id)}
+            entry={entry}
+            key={entry.generation.id}
+            onCancel={onCancel}
+            onEdit={onEdit}
+            onRemove={onRemove}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function GenerationQueueCard({
+  canceling,
+  entry,
+  onCancel,
+  onEdit,
+  onRemove,
+}: {
+  canceling: boolean
+  entry: ArticraftGenerationQueueItem
+  onCancel: (generation: ArticraftGeneration) => void
+  onEdit: (draft: ArticraftGenerationDraft) => void
+  onRemove: (id: string) => void
+}) {
+  const { draft, generation } = entry
+  const active = isGenerationActive(generation)
+  const elapsed = useGenerationElapsed(entry.createdAt, active)
+  const tone = generationStatusTone(generation.status)
+  return (
+    <article
+      data-articraft-generation={generation.id}
+      style={{
+        background: 'var(--background)',
+        border: `1px solid ${tone.border}`,
+        borderRadius: 12,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 9,
+        overflow: 'hidden',
+        padding: 10,
+        position: 'relative',
+      }}
+    >
+      {active && (
+        <div
+          aria-hidden
+          data-articraft-active-progress
+          style={{
+            animation: 'articraft-queue-pulse 1.6s ease-in-out infinite alternate',
+            background: ACCENT,
+            height: 2,
+            left: 0,
+            opacity: 0.55,
+            position: 'absolute',
+            right: 0,
+            top: 0,
+          }}
+        />
+      )}
+      <div style={{ alignItems: 'flex-start', display: 'flex', gap: 9 }}>
+        <GenerationReferenceThumbnail draft={draft} />
+        <div
+          style={{
+            display: 'flex',
+            flex: 1,
+            flexDirection: 'column',
+            gap: 4,
+            minWidth: 0,
+          }}
+        >
+          <div style={{ alignItems: 'center', display: 'flex', gap: 6 }}>
+            <span
+              style={{
+                color: tone.color,
+                fontSize: 8,
+                fontWeight: 750,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+              }}
+            >
+              {generationStatusLabel(generation.status)}
+            </span>
+            <span
+              style={{
+                color: 'var(--muted-foreground)',
+                fontSize: 8,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {formatElapsed(elapsed)}
+            </span>
+          </div>
+          <span
+            style={{
+              display: '-webkit-box',
+              fontSize: 10,
+              fontWeight: 650,
+              lineHeight: 1.35,
+              overflow: 'hidden',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+            }}
+          >
+            {draft.prompt}
+          </span>
+          <span
+            style={{
+              color: 'var(--muted-foreground)',
+              fontSize: 8,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {providerLabel(draft.provider)} · {draft.model}
+          </span>
+        </div>
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gap: 6,
+          gridTemplateColumns: `repeat(${generation.status === 'succeeded' ? 3 : 2}, minmax(0, 1fr))`,
+        }}
+      >
+        <GenerationAction icon="edit" label="Edit input" onClick={() => onEdit(draft)} />
+        {active ? (
+          <GenerationAction
+            disabled={canceling}
+            icon="stop"
+            label={canceling ? 'Stopping…' : 'Stop'}
+            onClick={() => onCancel(generation)}
+          />
+        ) : generation.status === 'succeeded' && generation.item ? (
+          <>
+            <GenerationAction
+              accent
+              icon="place"
+              label="Place"
+              onClick={() => arm(generation.item!)}
+            />
+            <GenerationAction icon="trash" label="Remove" onClick={() => onRemove(generation.id)} />
+          </>
+        ) : (
+          <GenerationAction icon="trash" label="Remove" onClick={() => onRemove(generation.id)} />
+        )}
+      </div>
+      {generation.message && generation.status !== 'succeeded' && (
+        <span
+          style={{
+            color: 'var(--muted-foreground)',
+            fontSize: 8,
+            lineHeight: 1.35,
+          }}
+        >
+          {generation.message}
+        </span>
+      )}
+    </article>
+  )
+}
+
+function GenerationReferenceThumbnail({ draft }: { draft: ArticraftGenerationDraft }) {
+  const localUrl = useMemo(
+    () => (draft.reference?.kind === 'file' ? URL.createObjectURL(draft.reference.file) : null),
+    [draft.reference],
+  )
+  useEffect(
+    () => () => {
+      if (localUrl) URL.revokeObjectURL(localUrl)
+    },
+    [localUrl],
+  )
+  const url = localUrl ?? (draft.reference?.kind === 'project' ? draft.reference.image.url : null)
+  return url ? (
+    <img
+      alt=""
+      src={url}
+      style={{
+        border: '1px solid color-mix(in srgb, var(--foreground) 14%, transparent)',
+        borderRadius: 8,
+        height: 45,
+        objectFit: 'cover',
+        width: 45,
+      }}
+    />
+  ) : (
+    <div
+      aria-hidden
+      style={{
+        alignItems: 'center',
+        background: 'var(--muted)',
+        border: '1px solid var(--border)',
+        borderRadius: 8,
+        color: 'var(--muted-foreground)',
+        display: 'flex',
+        height: 45,
+        justifyContent: 'center',
+        width: 45,
+      }}
+    >
+      <Icon name="cube" size={17} />
+    </div>
+  )
+}
+
+function GenerationAction({
+  accent = false,
+  disabled = false,
+  icon,
+  label,
+  onClick,
+}: {
+  accent?: boolean
+  disabled?: boolean
+  icon: IconName
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        alignItems: 'center',
+        background: accent ? ACCENT : 'var(--secondary)',
+        border: `1px solid ${accent ? ACCENT : 'var(--border)'}`,
+        borderRadius: 999,
+        color: accent ? '#17120f' : 'var(--secondary-foreground)',
+        cursor: disabled ? 'default' : 'pointer',
+        display: 'flex',
+        fontSize: 9,
+        fontWeight: 650,
+        gap: 5,
+        justifyContent: 'center',
+        minHeight: 40,
+        opacity: disabled ? 0.45 : 1,
+        padding: '7px 8px',
+        transition: 'background-color 120ms ease, border-color 120ms ease, opacity 120ms ease',
+      }}
+      type="button"
+    >
+      <Icon name={icon} size={12} />
+      {label}
+    </button>
+  )
+}
+
 function ArticraftEngine({
   configuration,
   loading,
+  onChange,
+  value,
 }: {
   configuration: ArticraftGenerationConfiguration | null
   loading: boolean
+  onChange: (value: string) => void
+  value: string
 }) {
   const ready = configuration?.ready === true
+  const selected = configuration?.models.find((model) => generationModelKey(model) === value)
   return (
     <section
       aria-label="Articraft engine"
       style={{
-        alignItems: 'center',
         background: ready
           ? 'color-mix(in srgb, #ff6b3d 7%, var(--background))'
           : 'var(--background)',
         border: `1px solid ${ready ? 'color-mix(in srgb, #ff6b3d 30%, var(--border))' : 'var(--border)'}`,
         borderRadius: 11,
         display: 'flex',
-        gap: 9,
-        padding: '9px 10px',
+        flexDirection: 'column',
+        gap: 8,
+        padding: 10,
       }}
     >
-      <div
-        style={{
-          alignItems: 'center',
-          background: ready ? ACCENT : 'var(--muted)',
-          borderRadius: 8,
-          color: ready ? '#17120f' : 'var(--muted-foreground)',
-          display: 'flex',
-          height: 30,
-          justifyContent: 'center',
-          width: 30,
-        }}
-      >
-        <Icon name="cube" size={15} />
-      </div>
-      <div style={{ display: 'flex', flex: 1, flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <span style={{ fontSize: 10, fontWeight: 700 }}>Articraft engine</span>
+      <div style={{ alignItems: 'center', display: 'flex', gap: 9 }}>
+        <div
+          style={{
+            alignItems: 'center',
+            background: ready ? ACCENT : 'var(--muted)',
+            borderRadius: 8,
+            color: ready ? '#17120f' : 'var(--muted-foreground)',
+            display: 'flex',
+            height: 30,
+            justifyContent: 'center',
+            width: 30,
+          }}
+        >
+          <Icon name="cube" size={15} />
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            flex: 1,
+            flexDirection: 'column',
+            gap: 2,
+            minWidth: 0,
+          }}
+        >
+          <span style={{ fontSize: 10, fontWeight: 700 }}>Articraft model</span>
+          <span style={{ color: 'var(--muted-foreground)', fontSize: 9 }}>
+            {loading
+              ? 'Checking the generation worker…'
+              : selected
+                ? `${providerLabel(selected.provider)} · ${selected.model}`
+                : 'The generation worker is unavailable on this host.'}
+          </span>
+        </div>
         <span
           style={{
-            color: 'var(--muted-foreground)',
-            fontSize: 9,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            border: `1px solid ${ready ? ACCENT : 'var(--border)'}`,
+            borderRadius: 999,
+            color: ready ? ACCENT : 'var(--muted-foreground)',
+            fontSize: 8,
+            fontWeight: 750,
+            padding: '3px 6px',
             whiteSpace: 'nowrap',
           }}
         >
-          {loading
-            ? 'Checking the generation worker…'
-            : ready && configuration
-              ? `${providerLabel(configuration.provider)} · ${configuration.model}`
-              : 'The generation worker is unavailable on this host.'}
+          {loading ? 'CHECKING' : ready ? 'READY' : 'OFFLINE'}
         </span>
       </div>
-      <span
-        style={{
-          border: `1px solid ${ready ? ACCENT : 'var(--border)'}`,
-          borderRadius: 999,
-          color: ready ? ACCENT : 'var(--muted-foreground)',
-          fontSize: 8,
-          fontWeight: 750,
-          padding: '3px 6px',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {loading ? 'CHECKING' : ready ? 'AUTO' : 'OFFLINE'}
-      </span>
+      {configuration && (
+        <label style={labelStyle}>
+          Model
+          <select
+            aria-label="Articraft generation model"
+            disabled={!ready || configuration.models.length < 2}
+            onChange={(event) => onChange(event.target.value)}
+            style={{ ...inputStyle, cursor: ready ? 'pointer' : 'default' }}
+            value={value}
+          >
+            {configuration.models.map((model) => (
+              <option key={generationModelKey(model)} value={generationModelKey(model)}>
+                {model.label} · {providerLabel(model.provider)}
+                {model.model === configuration.model && model.provider === configuration.provider
+                  ? ' (Default)'
+                  : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
     </section>
   )
 }
@@ -1655,20 +2112,36 @@ function Status({ children, error = false }: { children: ReactNode; error?: bool
   )
 }
 
-type IconName = 'corner' | 'cube' | 'folder' | 'image' | 'joint' | 'search' | 'sparkles' | 'upload'
+type IconName =
+  | 'corner'
+  | 'cube'
+  | 'edit'
+  | 'folder'
+  | 'image'
+  | 'joint'
+  | 'place'
+  | 'search'
+  | 'sparkles'
+  | 'stop'
+  | 'trash'
+  | 'upload'
 
 const iconPaths: Record<IconName, ReactNode> = {
   corner: <path d="m9 7 5 5-5 5M4 4v4a4 4 0 0 0 4 4h6" />,
   cube: <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Zm0 9 8-4.5M12 12 4 7.5M12 12v9" />,
+  edit: <path d="m4 20 4.2-1 10.6-10.6a2 2 0 0 0-2.8-2.8L5.4 16.2 4 20Zm10.5-12 2.8 2.8" />,
   folder: (
     <path d="M3 7.5V18a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-7l-2-2H5a2 2 0 0 0-2 2v1Z" />
   ),
   image: <path d="M4 5h16v14H4zM4 15l4-4 4 4 2-2 6 6M15.5 9.5h.01" />,
   joint: <path d="M6 12a3 3 0 1 0 0 .01M18 12a3 3 0 1 0 0 .01M9 12h6" />,
+  place: <path d="M12 21V9m0 0 4 4m-4-4-4 4M5 5h14" />,
   search: <path d="m20 20-4.4-4.4M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />,
   sparkles: (
     <path d="m12 3 1.1 3.4L16.5 7.5l-3.4 1.1L12 12l-1.1-3.4-3.4-1.1 3.4-1.1L12 3ZM18 13l.8 2.2L21 16l-2.2.8L18 19l-.8-2.2L15 16l2.2-.8L18 13ZM6 12l.8 2.2L9 15l-2.2.8L6 18l-.8-2.2L3 15l2.2-.8L6 12Z" />
   ),
+  stop: <path d="M7 7h10v10H7z" />,
+  trash: <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />,
   upload: <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v5h14v-5" />,
 }
 
@@ -1723,6 +2196,61 @@ async function imageFileFromUrl(url: string, name: string, signal?: AbortSignal)
   return new File([blob], `${basename || 'reference'}.${extension}`, {
     type: blob.type,
   })
+}
+
+function generationModelKey(model: Pick<ArticraftGenerationModel, 'model' | 'provider'>): string {
+  return `${model.provider}\u0000${model.model}`
+}
+
+function isGenerationActive(generation: ArticraftGeneration): boolean {
+  return generation.status === 'queued' || generation.status === 'running'
+}
+
+function useGenerationElapsed(createdAt: number, active: boolean): number {
+  const [elapsed, setElapsed] = useState(() =>
+    Math.max(0, Math.floor((Date.now() - createdAt) / 1000)),
+  )
+  useEffect(() => {
+    setElapsed(Math.max(0, Math.floor((Date.now() - createdAt) / 1000)))
+    if (!active) return
+    const timer = window.setInterval(
+      () => setElapsed(Math.max(0, Math.floor((Date.now() - createdAt) / 1000))),
+      1000,
+    )
+    return () => window.clearInterval(timer)
+  }, [active, createdAt])
+  return elapsed
+}
+
+function generationStatusLabel(status: ArticraftGeneration['status']): string {
+  return {
+    canceled: 'Canceled',
+    failed: 'Failed',
+    queued: 'Queued',
+    running: 'Generating',
+    succeeded: 'Ready to place',
+  }[status]
+}
+
+function generationStatusTone(status: ArticraftGeneration['status']): {
+  border: string
+  color: string
+} {
+  if (status === 'succeeded')
+    return {
+      border: 'color-mix(in srgb, #22c55e 34%, var(--border))',
+      color: '#43cf75',
+    }
+  if (status === 'failed')
+    return {
+      border: 'color-mix(in srgb, #ef4444 34%, var(--border))',
+      color: '#ef6d6d',
+    }
+  if (status === 'canceled') return { border: 'var(--border)', color: 'var(--muted-foreground)' }
+  return {
+    border: 'color-mix(in srgb, #ff6b3d 38%, var(--border))',
+    color: ACCENT,
+  }
 }
 
 function providerLabel(provider: ArticraftGenerationConfiguration['provider']): string {

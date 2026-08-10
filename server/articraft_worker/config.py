@@ -5,6 +5,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+DEFAULT_PROVIDER_MODELS = {
+    "openai": ("gpt-5.6", "GPT-5.6"),
+    "anthropic": ("claude-sonnet-5", "Claude Sonnet 5"),
+    "gemini": ("gemini-3.6-flash", "Gemini 3.6 Flash"),
+    "openrouter": (
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "Nemotron 3 Ultra",
+    ),
+}
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     api_key: str
@@ -17,6 +28,22 @@ class Settings:
     default_provider: str = "openai"
     default_model: str | None = "gpt-5.6"
     max_concurrent_jobs: int = 1
+
+    def generation_models(self) -> list[dict[str, str]]:
+        providers = [
+            self.default_provider,
+            *sorted(self.allowed_providers - {self.default_provider}),
+        ]
+        models: list[dict[str, str]] = []
+        for provider in providers:
+            fallback_model, label = DEFAULT_PROVIDER_MODELS[provider]
+            model = (
+                self.default_model
+                if provider == self.default_provider and self.default_model
+                else fallback_model
+            )
+            models.append({"provider": provider, "model": model, "label": label})
+        return models
 
 
 def load_settings() -> Settings:

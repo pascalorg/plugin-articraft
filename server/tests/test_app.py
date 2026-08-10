@@ -1,5 +1,7 @@
+import asyncio
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -45,6 +47,31 @@ def test_generation_rejects_disallowed_provider(tmp_path: Path) -> None:
 
     assert response.status_code == 400
     assert response.json() == {"detail": "Provider is not allowed"}
+
+
+def test_configuration_returns_default_and_selectable_models(tmp_path: Path) -> None:
+    resolved = settings(tmp_path)
+    resolved = replace(resolved, allowed_providers=frozenset({"openai", "anthropic"}))
+    client = TestClient(create_app(resolved))
+
+    response = client.get(
+        "/v1/configuration",
+        headers={"authorization": "Bearer test-worker-key"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "openai",
+        "model": "gpt-5.6",
+        "models": [
+            {"provider": "openai", "model": "gpt-5.6", "label": "GPT-5.6"},
+            {
+                "provider": "anthropic",
+                "model": "claude-sonnet-5",
+                "label": "Claude Sonnet 5",
+            },
+        ],
+    }
 
 
 def test_generation_uses_worker_default_provider_and_model(
@@ -165,6 +192,42 @@ def test_worker_limits_concurrent_generations(
         for job_id in job_ids:
             _wait_for_status(client, job_id, "failed")
     assert peak == 1
+
+
+def test_running_generation_can_be_canceled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    generation_started = threading.Event()
+    generation_canceled = threading.Event()
+
+    async def cancellable_generation(**_: object) -> None:
+        generation_started.set()
+        try:
+            while True:
+                await asyncio.sleep(0.05)
+        finally:
+            generation_canceled.set()
+
+    monkeypatch.setattr("articraft_worker.app.generate_item", cancellable_generation)
+    with TestClient(create_app(settings(tmp_path))) as client:
+        created = client.post(
+            "/v1/generations",
+            headers={"authorization": "Bearer test-worker-key"},
+            data={"prompt": "a folding lamp"},
+        )
+        job_id = created.json()["id"]
+        assert generation_started.wait(0.5)
+
+        canceled = client.post(
+            f"/v1/generations/{job_id}/cancel",
+            headers={"authorization": "Bearer test-worker-key"},
+        )
+
+        assert canceled.status_code == 200
+        assert canceled.json()["status"] == "canceled"
+        assert generation_canceled.wait(0.5)
+        assert _wait_for_status(client, job_id, "canceled")["message"] == "Generation canceled"
 
 
 def _wait_for_status(

@@ -18,7 +18,10 @@ hosted service from the Articraft researchers.
 ## What the plugin contributes
 
 - Plugin id `pascal:articraft` and node kind `articraft:asset`.
-- A lazy Articraft sidebar with Browse and Generate views.
+- A lazy Articraft sidebar with Browse and Generate views. Generate exposes the
+  worker's allowed model choices and keeps concurrent runs in a controllable queue;
+  each card can restore its prompt/reference/model, stop active work, place a
+  completed result, or be removed from the session list.
 - A placement tool that persists the artifact identity, source attribution,
   normalized articulation graph, and current joint pose in the Pascal scene.
 - URDF + OBJ rendering for the CC BY 4.0 Articraft-10K dataset.
@@ -49,10 +52,10 @@ credentials. Hosts expose the same-origin broker described in
   model files from the public catalog storage origin configured by that host.
   That storage provider receives ordinary request metadata such as IP address
   and user agent.
-- Generation sends the prompt and optional reference image to the Pascal host,
-  which applies its visible automatic provider/model choice before calling the
-  configured mini-articraft worker. Provider handling is governed by that provider's
-  terms and the host operator's account.
+- Generation sends the prompt, chosen allowlisted model, and optional reference image
+  to the Pascal host. The worker publishes its configured default and selectable
+  models through the credentialed broker; provider handling is governed by that
+  provider's terms and the host operator's account.
 - The reference worker persists the prompt, job status, and generated source/run
   metadata on its private durable volume. It publishes a normalized manifest
   without the prompt plus the public USDZ artifact. A reference image is kept only

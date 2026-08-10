@@ -59,7 +59,7 @@ class CatalogItem(BaseModel):
 
 class Job(BaseModel):
     id: str
-    status: Literal["queued", "running", "succeeded", "failed"]
+    status: Literal["queued", "running", "succeeded", "failed", "canceled"]
     message: str | None = None
     item: CatalogItem | None = None
     provider: str
@@ -70,9 +70,21 @@ class Job(BaseModel):
 
 class GenerationResponse(BaseModel):
     id: str
-    status: Literal["queued", "running", "succeeded", "failed"]
+    status: Literal["queued", "running", "succeeded", "failed", "canceled"]
     message: str | None = None
     item: CatalogItem | None = None
+
+
+class GenerationModel(BaseModel):
+    provider: Literal["openai", "anthropic", "gemini", "openrouter"]
+    model: str
+    label: str
+
+
+class GenerationConfiguration(BaseModel):
+    provider: Literal["openai", "anthropic", "gemini", "openrouter"]
+    model: str
+    models: list[GenerationModel]
 
 
 JsonObject = dict[str, Any]

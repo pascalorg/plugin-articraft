@@ -22,6 +22,10 @@ uv run --env-file .env uvicorn articraft_worker.app:create_app --factory --host 
 The worker selects `openai` with `gpt-5.6` when a request omits provider/model
 fields. Override `ARTICRAFT_DEFAULT_PROVIDER` and `ARTICRAFT_DEFAULT_MODEL` in the
 worker environment when another audited deployment should be automatic. The
+authenticated `/v1/configuration` route reports that default plus one selectable
+model for every provider in `ARTICRAFT_ALLOWED_PROVIDERS`. Active jobs can be
+interrupted through `POST /v1/generations/:jobId/cancel`; the worker keeps the
+terminal canceled record for status polling and restart safety. The
 reference deployment gives the modeling agent 120 turns through
 `MINI_ARTICRAFT_MAX_TURNS`; this leaves enough room for visual inspection and a
 final successful response after compilation while preserving a finite cost bound.

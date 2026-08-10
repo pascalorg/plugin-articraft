@@ -24,21 +24,21 @@ export function isCatalogItem(value: unknown): value is ArticraftCatalogItem {
   const attribution = object(item?.attribution)
   return Boolean(
     item &&
-      typeof item.id === 'string' &&
-      typeof item.title === 'string' &&
-      (item.source === 'articraft-10k' || item.source === 'generated') &&
-      artifact &&
-      (artifact.format === 'urdf' || artifact.format === 'usdz') &&
-      typeof artifact.url === 'string' &&
-      Array.isArray(item.dimensions) &&
-      item.dimensions.length === 3 &&
-      Array.isArray(item.parts) &&
-      Array.isArray(item.joints) &&
-      object(item.defaultJointValues) &&
-      attribution &&
-      typeof attribution.creator === 'string' &&
-      typeof attribution.license === 'string' &&
-      typeof attribution.sourceUrl === 'string',
+    typeof item.id === 'string' &&
+    typeof item.title === 'string' &&
+    (item.source === 'articraft-10k' || item.source === 'generated') &&
+    artifact &&
+    (artifact.format === 'urdf' || artifact.format === 'usdz') &&
+    typeof artifact.url === 'string' &&
+    Array.isArray(item.dimensions) &&
+    item.dimensions.length === 3 &&
+    Array.isArray(item.parts) &&
+    Array.isArray(item.joints) &&
+    object(item.defaultJointValues) &&
+    attribution &&
+    typeof attribution.creator === 'string' &&
+    typeof attribution.license === 'string' &&
+    typeof attribution.sourceUrl === 'string',
   )
 }
 
@@ -176,12 +176,27 @@ export async function fetchGeneration(id: string): Promise<ArticraftGeneration> 
   return parseGeneration(payload)
 }
 
+export async function cancelGeneration(id: string): Promise<ArticraftGeneration> {
+  const response = await fetch(
+    `${ARTICRAFT_API_BASE}/generations/${encodeURIComponent(id)}/cancel`,
+    { method: 'POST' },
+  )
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    const detail = object(payload)?.detail
+    throw new Error(
+      typeof detail === 'string' ? detail : `Generation cancel failed (${response.status}).`,
+    )
+  }
+  return parseGeneration(payload)
+}
+
 function parseGeneration(value: unknown): ArticraftGeneration {
   const generation = object(value)
   if (
     !generation ||
     typeof generation.id !== 'string' ||
-    !['queued', 'running', 'succeeded', 'failed'].includes(String(generation.status)) ||
+    !['queued', 'running', 'succeeded', 'failed', 'canceled'].includes(String(generation.status)) ||
     (generation.item !== undefined && !isCatalogItem(generation.item))
   ) {
     throw new Error('The Articraft worker returned an invalid response.')
@@ -223,18 +238,35 @@ export function parseReferenceRender(value: unknown): ArticraftReferenceRender {
 
 export function parseGenerationConfiguration(value: unknown): ArticraftGenerationConfiguration {
   const configuration = object(object(value)?.generation)
+  const models = Array.isArray(configuration?.models)
+    ? configuration.models.flatMap((value) => {
+        const model = object(value)
+        return model &&
+          typeof model.label === 'string' &&
+          typeof model.model === 'string' &&
+          ['openai', 'anthropic', 'gemini', 'openrouter'].includes(String(model.provider))
+          ? [
+              {
+                label: model.label,
+                model: model.model,
+                provider: model.provider as ArticraftGenerationProvider,
+              },
+            ]
+          : []
+      })
+    : []
   if (
     !configuration ||
     typeof configuration.ready !== 'boolean' ||
-    !['openai', 'anthropic', 'gemini', 'openrouter'].includes(
-      String(configuration.provider),
-    ) ||
-    typeof configuration.model !== 'string'
+    !['openai', 'anthropic', 'gemini', 'openrouter'].includes(String(configuration.provider)) ||
+    typeof configuration.model !== 'string' ||
+    models.length === 0
   ) {
     throw new Error('The Articraft host returned an invalid engine configuration.')
   }
   return {
     model: configuration.model,
+    models,
     provider: configuration.provider as ArticraftGenerationProvider,
     ready: configuration.ready,
   }

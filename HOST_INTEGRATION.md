@@ -43,13 +43,16 @@ GET  /api/plugins/articraft/configuration
 POST /api/plugins/articraft/references
 POST /api/plugins/articraft/generations
 GET  /api/plugins/articraft/generations/:jobId
+POST /api/plugins/articraft/generations/:jobId/cancel
 ```
 
 Catalog responses use `ArticraftCatalogResponse`. Generation creation accepts
 multipart form data (`prompt`, optional `image`, optional `provider`, optional
-`model`) and returns `{ id, status }`. The host and worker select their configured
-OpenAI/GPT-5.6 default when those fields are absent. Job status returns an item with the same
-`ArticraftCatalogItem` shape when complete.
+`model`) and returns `{ id, status }`. Configuration returns the worker-selected
+default plus its allowlisted `models`; OpenAI/GPT-5.6 remains selected when those
+fields are absent. Job status returns an item with the same `ArticraftCatalogItem`
+shape when complete. Cancel marks queued work canceled immediately and propagates
+the interruption into an active mini-articraft coroutine.
 
 Reference creation accepts multipart form data (`projectId`, `prompt`, `provider`,
 and optional `image`). Providers are `azure-openai` and `google`. The host generates
