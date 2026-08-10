@@ -21,7 +21,10 @@ uv run --env-file .env uvicorn articraft_worker.app:create_app --factory --host 
 
 The worker selects `openai` with `gpt-5.6` when a request omits provider/model
 fields. Override `ARTICRAFT_DEFAULT_PROVIDER` and `ARTICRAFT_DEFAULT_MODEL` in the
-worker environment when another audited deployment should be automatic.
+worker environment when another audited deployment should be automatic. The
+reference deployment gives the modeling agent 120 turns through
+`MINI_ARTICRAFT_MAX_TURNS`; this leaves enough room for visual inspection and a
+final successful response after compilation while preserving a finite cost bound.
 
 Run tests with `uv run pytest`. The storage bucket must already exist and be
 publicly readable; the worker deliberately does not create or reconfigure it.

@@ -19,6 +19,7 @@ FROM ghcr.io/astral-sh/uv:0.9.21-python3.12-bookworm-slim@sha256:c79e0c910458f04
 ENV HOME=/tmp \
     PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
+    MINI_ARTICRAFT_MAX_TURNS=120 \
     ARTICRAFT_JOBS_DIR=/data/jobs \
     ARTICRAFT_RUNS_DIR=/data/runs \
     PORT=8000
