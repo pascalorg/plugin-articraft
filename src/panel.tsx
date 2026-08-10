@@ -185,7 +185,7 @@ export default function ArticraftPanel() {
           minHeight: 0,
           overflowY: 'auto',
           overscrollBehavior: 'contain',
-          padding: 15,
+          padding: mode === 'browse' ? '0 15px 15px' : 15,
         }}
       >
         {mode === 'browse' ? <Catalog scrollContainer={content} /> : <Generate />}
@@ -342,7 +342,7 @@ function Catalog({ scrollContainer }: { scrollContainer: { current: HTMLDivEleme
           display: 'flex',
           flexDirection: 'column',
           gap: 9,
-          margin: '-15px -15px 0',
+          margin: '0 -15px',
           padding: '15px 15px 10px',
           position: 'sticky',
           top: 0,
