@@ -4,6 +4,7 @@ import type {
   ArticraftCategory,
   ArticraftGeneration,
   ArticraftProjectImage,
+  ArticraftReferenceProvider,
   ArticraftReferenceRender,
 } from './types'
 
@@ -107,35 +108,23 @@ export async function fetchProjectImages(
 }
 
 export async function createReferenceRender(input: {
+  image?: File
   projectId: string
   prompt: string
-  sourceUrl?: string
+  provider: ArticraftReferenceProvider
 }): Promise<ArticraftReferenceRender> {
-  const response = await fetch('/api/ai/renders', {
+  const body = new FormData()
+  body.set('projectId', input.projectId)
+  body.set('prompt', input.prompt)
+  body.set('provider', input.provider)
+  if (input.image) body.set('image', input.image)
+  const response = await fetch(`${ARTICRAFT_API_BASE}/references`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      projectId: input.projectId,
-      modelId: 'gpt-image-2',
-      prompt: input.prompt,
-      settings: { aspectRatio: '1:1', quality: 'medium' },
-      sources: input.sourceUrl ? [{ type: 'upload', url: input.sourceUrl }] : [],
-    }),
+    body,
   })
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
     throw new Error(responseError(object(payload), response.status, 'Reference generation failed'))
-  }
-  return parseReferenceRender(payload)
-}
-
-export async function fetchReferenceRender(id: string): Promise<ArticraftReferenceRender> {
-  const response = await fetch(`/api/ai/renders/${encodeURIComponent(id)}/status`, {
-    cache: 'no-store',
-  })
-  const payload = await response.json().catch(() => null)
-  if (!response.ok) {
-    throw new Error(responseError(object(payload), response.status, 'Reference status failed'))
   }
   return parseReferenceRender(payload)
 }
@@ -182,23 +171,35 @@ function parseGeneration(value: unknown): ArticraftGeneration {
   return generation as ArticraftGeneration
 }
 
-function parseReferenceRender(value: unknown): ArticraftReferenceRender {
+export function parseReferenceRender(value: unknown): ArticraftReferenceRender {
   const render = object(value)
   if (
     !render ||
     typeof render.id !== 'string' ||
-    !['pending', 'completed', 'failed'].includes(String(render.status))
+    render.status !== 'completed' ||
+    typeof render.image_url !== 'string' ||
+    typeof render.provider !== 'string' ||
+    !['azure-openai', 'google'].includes(render.provider) ||
+    typeof render.model !== 'string'
   ) {
-    throw new Error('GPT Image 2 returned an invalid response.')
+    throw new Error('The reference provider returned an invalid response.')
+  }
+  const projectImage = object(render.project_image)
+  if (
+    !projectImage ||
+    typeof projectImage.id !== 'string' ||
+    typeof projectImage.name !== 'string' ||
+    typeof projectImage.url !== 'string'
+  ) {
+    throw new Error('The reference provider did not save a valid project file.')
   }
   return {
     id: render.id,
-    status: render.status as ArticraftReferenceRender['status'],
-    ...(typeof render.image_url === 'string' ? { imageUrl: render.image_url } : {}),
-    ...(typeof render.error_text === 'string' ? { errorText: render.error_text } : {}),
-    ...(typeof render.queue_position === 'number' || render.queue_position === null
-      ? { queuePosition: render.queue_position }
-      : {}),
+    status: 'completed',
+    imageUrl: render.image_url,
+    provider: render.provider as ArticraftReferenceProvider,
+    model: render.model,
+    projectImage: projectImage as ArticraftProjectImage,
   }
 }
 

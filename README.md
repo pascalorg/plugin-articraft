@@ -27,6 +27,11 @@ hosted service from the Articraft researchers.
   radians stay radians in scene data and are displayed as degrees only for people.
 - Persistent, selection-independent motion that smoothly sweeps every movable
   joint while keeping per-frame values transient.
+- A registry-native 2D footprint that follows each asset's persisted position,
+  yaw, scale, selection, and highlight state in floor-plan view.
+- An optional reference studio backed by host-scoped Azure GPT Image 2 and Google
+  Nano Banana 2 providers. Generated references are saved into Pascal Files before
+  they are reused for articulated-asset generation.
 
 The browser package never receives provider, worker, or Supabase service-role
 credentials. Hosts expose the same-origin broker described in

@@ -21,7 +21,6 @@ import {
   fetchCatalog,
   fetchGeneration,
   fetchProjectImages,
-  fetchReferenceRender,
 } from './api'
 import { useArticraftStore } from './store'
 import type {
@@ -29,6 +28,7 @@ import type {
   ArticraftCategory,
   ArticraftGeneration,
   ArticraftProjectImage,
+  ArticraftReferenceProvider,
   ArticraftReferenceRender,
 } from './types'
 
@@ -746,9 +746,13 @@ function Generate() {
   const [projectImage, setProjectImage] = useState<ArticraftProjectImage | null>(null)
   const [referenceRender, setReferenceRender] = useState<ArticraftReferenceRender | null>(null)
   const [projectImages, setProjectImages] = useState<ArticraftProjectImage[]>([])
-  const [filesOpen, setFilesOpen] = useState(false)
+  const [showAllFiles, setShowAllFiles] = useState(false)
   const [filesLoading, setFilesLoading] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [referenceDialogOpen, setReferenceDialogOpen] = useState(false)
+  const [referencePrompt, setReferencePrompt] = useState('')
+  const [referenceProvider, setReferenceProvider] =
+    useState<ArticraftReferenceProvider>('azure-openai')
   const [job, setJob] = useState<ArticraftGeneration | null>(null)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -767,9 +771,11 @@ function Generate() {
   )
 
   const referenceUrl = localPreview ?? referenceRender?.imageUrl ?? projectImage?.url ?? null
-  const referenceName = referenceRender?.imageUrl
-    ? 'GPT Image 2 reference'
-    : (localImage?.name ?? projectImage?.name ?? 'Reference image')
+  const referenceName =
+    referenceRender?.projectImage.name ??
+    localImage?.name ??
+    projectImage?.name ??
+    'Reference image'
 
   useEffect(() => {
     if (!projectId) return
@@ -785,19 +791,6 @@ function Generate() {
       })
     return () => controller.abort()
   }, [projectId])
-
-  useEffect(() => {
-    if (referenceRender?.status !== 'pending') return
-    const timer = window.setTimeout(() => {
-      void fetchReferenceRender(referenceRender.id)
-        .then((next) => {
-          setReferenceRender(next)
-          if (next.status === 'failed') setError(next.errorText ?? 'Reference generation failed.')
-        })
-        .catch((cause) => setError(errorMessage(cause)))
-    }, 1800)
-    return () => window.clearTimeout(timer)
-  }, [referenceRender])
 
   useEffect(() => {
     if (!(job && ['queued', 'running'].includes(job.status))) return
@@ -826,22 +819,32 @@ function Generate() {
     setLocalImage(file)
     setProjectImage(null)
     setReferenceRender(null)
-    setFilesOpen(false)
   }
 
   const generateReference = async () => {
-    if (!(projectId && prompt.trim())) return
+    if (!(projectId && referencePrompt.trim())) return
     setError('')
     setGeneratingReference(true)
-    setLocalImage(null)
     try {
+      const source = localImage
+        ? localImage
+        : referenceUrl
+          ? await imageFileFromUrl(referenceUrl, referenceName)
+          : undefined
       const render = await createReferenceRender({
+        ...(source ? { image: source } : {}),
         projectId,
-        prompt: `Clean product reference of ${prompt.trim()}. Single articulated object, fully visible, neutral studio background, clear separations between moving parts, no text.`,
-        ...(projectImage ? { sourceUrl: projectImage.url } : {}),
+        prompt: referencePrompt.trim(),
+        provider: referenceProvider,
       })
       setReferenceRender(render)
-      setFilesOpen(false)
+      setLocalImage(null)
+      setProjectImage(null)
+      setProjectImages((current) => [
+        render.projectImage,
+        ...current.filter((image) => image.id !== render.projectImage.id),
+      ])
+      setReferenceDialogOpen(false)
     } catch (cause) {
       setError(errorMessage(cause))
     } finally {
@@ -879,35 +882,12 @@ function Generate() {
 
   return (
     <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
-      <Step eyebrow="01 · Describe" title="What should move?">
-        <textarea
-          aria-label="Prompt"
-          onChange={(event) => setPrompt(event.target.value)}
-          placeholder="A compact task chair with adjustable arms and a tilting back…"
-          required
-          rows={5}
-          style={{ ...inputStyle, lineHeight: 1.5, resize: 'vertical' }}
-          value={prompt}
-        />
-        <div
-          style={{
-            color: 'var(--muted-foreground)',
-            display: 'flex',
-            fontSize: 9,
-            gap: 5,
-          }}
-        >
-          <Icon name="joint" size={11} />
-          Name moving parts, hinges, sliders, and expected range of motion.
-        </div>
-      </Step>
-
-      <Step eyebrow="02 · Reference · Optional" title="Give it visual intent">
+      <Step eyebrow="01 · Reference · Optional" title="Start with the object">
         {referenceUrl ? (
           <div
             style={{
               background: 'var(--muted)',
-              border: `1px solid ${referenceRender?.status === 'pending' ? ACCENT : 'var(--border)'}`,
+              border: `1px solid ${referenceRender ? ACCENT : 'var(--border)'}`,
               borderRadius: 11,
               overflow: 'hidden',
               position: 'relative',
@@ -936,7 +916,7 @@ function Generate() {
                 right: 0,
               }}
             >
-              <Icon name={referenceRender?.imageUrl ? 'sparkles' : 'image'} size={12} />
+              <Icon name={referenceRender ? 'sparkles' : 'image'} size={12} />
               <span
                 style={{
                   flex: 1,
@@ -948,6 +928,11 @@ function Generate() {
               >
                 {referenceName}
               </span>
+              {referenceRender && (
+                <span style={{ color: ACCENT, fontSize: 8, whiteSpace: 'nowrap' }}>
+                  Saved to Files
+                </span>
+              )}
               <button
                 aria-label="Remove reference"
                 onClick={() => {
@@ -962,11 +947,6 @@ function Generate() {
               </button>
             </div>
           </div>
-        ) : referenceRender?.status === 'pending' ? (
-          <Status>
-            GPT Image 2 is composing a clean object reference
-            {referenceRender.queuePosition ? ` · queue ${referenceRender.queuePosition}` : ''}…
-          </Status>
         ) : (
           <button
             onClick={() => fileInput.current?.click()}
@@ -998,7 +978,7 @@ function Generate() {
             <Icon name="upload" size={20} />
             <span style={{ fontSize: 11, fontWeight: 650 }}>Drop a product image here</span>
             <span style={{ color: 'var(--muted-foreground)', fontSize: 9 }}>
-              JPEG, PNG or WebP · up to 10 MB
+              Or choose a recent Pascal File below
             </span>
           </button>
         )}
@@ -1012,43 +992,117 @@ function Generate() {
           style={{ display: 'none' }}
           type="file"
         />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <div
+            style={{
+              alignItems: 'center',
+              display: 'flex',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span style={{ fontSize: 10, fontWeight: 650 }}>Recent project images</span>
+            <span style={{ color: 'var(--muted-foreground)', fontSize: 9 }}>
+              {filesLoading ? 'Loading…' : `${projectImages.length} files`}
+            </span>
+          </div>
+          {filesLoading ? (
+            <Status>Reading Pascal Files…</Status>
+          ) : projectImages.length === 0 ? (
+            <Status>Generated references will be saved here automatically.</Status>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gap: 6,
+                gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              }}
+            >
+              {(showAllFiles ? projectImages : projectImages.slice(0, 6)).map((image) => (
+                <button
+                  aria-label={`Use ${image.name}`}
+                  key={image.id}
+                  onClick={() => {
+                    setProjectImage(image)
+                    setLocalImage(null)
+                    setReferenceRender(null)
+                  }}
+                  style={{
+                    background: 'var(--muted)',
+                    border: `1px solid ${projectImage?.id === image.id ? ACCENT : 'var(--border)'}`,
+                    borderRadius: 9,
+                    cursor: 'pointer',
+                    overflow: 'hidden',
+                    padding: 0,
+                    position: 'relative',
+                  }}
+                  title={image.name}
+                  type="button"
+                >
+                  <img
+                    alt=""
+                    loading="lazy"
+                    src={image.url}
+                    style={{
+                      aspectRatio: '1 / 1',
+                      display: 'block',
+                      objectFit: 'cover',
+                      width: '100%',
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+          {projectImages.length > 6 && (
+            <button
+              onClick={() => setShowAllFiles((value) => !value)}
+              style={secondaryButton(false, { alignSelf: 'flex-start' })}
+              type="button"
+            >
+              {showAllFiles ? 'Show recent only' : `Show all ${projectImages.length}`}
+            </button>
+          )}
+        </div>
+
         <div
           style={{
             display: 'grid',
             gap: 6,
-            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
           }}
         >
           <ReferenceAction
             icon="upload"
-            label="Upload"
+            label="Upload image"
             onClick={() => fileInput.current?.click()}
           />
           <ReferenceAction
-            active={filesOpen}
-            icon="folder"
-            label="Pascal Files"
-            onClick={() => setFilesOpen((value) => !value)}
-          />
-          <ReferenceAction
-            disabled={!(projectId && prompt.trim()) || generatingReference}
             icon="sparkles"
-            label={generatingReference ? 'Starting…' : 'GPT Image 2'}
-            onClick={() => void generateReference()}
+            label={referenceRender ? 'Refine reference' : 'Generate reference'}
+            onClick={() => {
+              if (!referencePrompt && prompt.trim()) {
+                setReferencePrompt(
+                  `Clean product reference of ${prompt.trim()}. Single articulated object, fully visible, neutral studio background, clear separation between moving parts, no text.`,
+                )
+              }
+              setReferenceDialogOpen(true)
+            }}
           />
         </div>
 
-        {filesOpen && (
+        {referenceDialogOpen && (
           <div
+            aria-label="Generate reference image"
+            role="dialog"
             style={{
-              border: '1px solid var(--border)',
-              borderRadius: 11,
+              background: 'color-mix(in srgb, #ff6b3d 5%, var(--background))',
+              border: '1px solid color-mix(in srgb, #ff6b3d 35%, var(--border))',
+              borderRadius: 12,
               display: 'flex',
               flexDirection: 'column',
-              gap: 8,
-              maxHeight: 240,
-              overflow: 'auto',
-              padding: 8,
+              gap: 10,
+              padding: 10,
             }}
           >
             <div
@@ -1058,86 +1112,100 @@ function Generate() {
                 justifyContent: 'space-between',
               }}
             >
-              <span style={{ fontSize: 10, fontWeight: 650 }}>Project images</span>
-              <span style={{ color: 'var(--muted-foreground)', fontSize: 9 }}>
-                {projectImages.length} files
-              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontSize: 11, fontWeight: 700 }}>Reference studio</span>
+                <span style={{ color: 'var(--muted-foreground)', fontSize: 8 }}>
+                  The result is saved to Pascal Files
+                </span>
+              </div>
+              <button
+                aria-label="Close reference studio"
+                onClick={() => setReferenceDialogOpen(false)}
+                style={iconButtonStyle()}
+                type="button"
+              >
+                ×
+              </button>
             </div>
-            {filesLoading ? (
-              <Status>Loading Pascal Files…</Status>
-            ) : projectImages.length === 0 ? (
-              <Status>No image files in this project yet.</Status>
-            ) : (
+            <div
+              aria-label="Reference provider"
+              role="group"
+              style={{ display: 'grid', gap: 6, gridTemplateColumns: '1fr 1fr' }}
+            >
+              <ReferenceProviderButton
+                active={referenceProvider === 'azure-openai'}
+                detail="GPT Image 2"
+                label="Azure OpenAI"
+                onClick={() => setReferenceProvider('azure-openai')}
+              />
+              <ReferenceProviderButton
+                active={referenceProvider === 'google'}
+                detail="Nano Banana 2"
+                label="Google"
+                onClick={() => setReferenceProvider('google')}
+              />
+            </div>
+            <label style={labelStyle}>
+              Image prompt
+              <textarea
+                aria-label="Reference image prompt"
+                onChange={(event) => setReferencePrompt(event.target.value)}
+                placeholder="A studio product photograph of a compact articulated desk lamp…"
+                rows={4}
+                style={{ ...inputStyle, lineHeight: 1.45, resize: 'vertical' }}
+                value={referencePrompt}
+              />
+            </label>
+            {referenceUrl && (
               <div
                 style={{
-                  display: 'grid',
+                  alignItems: 'center',
+                  color: 'var(--muted-foreground)',
+                  display: 'flex',
+                  fontSize: 9,
                   gap: 6,
-                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
                 }}
               >
-                {projectImages.map((image) => (
-                  <button
-                    aria-label={`Use ${image.name}`}
-                    key={image.id}
-                    onClick={() => {
-                      setProjectImage(image)
-                      setLocalImage(null)
-                      setReferenceRender(null)
-                      setFilesOpen(false)
-                    }}
-                    style={{
-                      background: 'var(--muted)',
-                      border: 0,
-                      borderRadius: 8,
-                      cursor: 'pointer',
-                      overflow: 'hidden',
-                      padding: 0,
-                    }}
-                    title={image.name}
-                    type="button"
-                  >
-                    <img
-                      alt=""
-                      loading="lazy"
-                      src={image.url}
-                      style={{
-                        aspectRatio: '1 / 1',
-                        display: 'block',
-                        objectFit: 'cover',
-                        width: '100%',
-                      }}
-                    />
-                  </button>
-                ))}
+                <Icon name="image" size={12} />
+                The selected image will be used as visual context.
               </div>
             )}
+            <button
+              disabled={!(projectId && referencePrompt.trim()) || generatingReference}
+              onClick={() => void generateReference()}
+              style={{
+                ...primaryButton,
+                opacity: !(projectId && referencePrompt.trim()) || generatingReference ? 0.48 : 1,
+              }}
+              type="button"
+            >
+              <Icon color="#17120f" name="sparkles" size={14} />
+              {generatingReference ? 'Generating and saving…' : 'Generate and save reference'}
+            </button>
           </div>
         )}
+      </Step>
 
+      <Step eyebrow="02 · Articulation" title="Describe what should move">
+        <textarea
+          aria-label="Prompt"
+          onChange={(event) => setPrompt(event.target.value)}
+          placeholder="A compact task chair with adjustable arms and a tilting back…"
+          required
+          rows={5}
+          style={{ ...inputStyle, lineHeight: 1.5, resize: 'vertical' }}
+          value={prompt}
+        />
         <div
           style={{
-            background: 'color-mix(in srgb, #ff6b3d 7%, var(--background))',
-            border: '1px solid color-mix(in srgb, #ff6b3d 28%, var(--border))',
-            borderRadius: 10,
+            color: 'var(--muted-foreground)',
             display: 'flex',
-            gap: 8,
-            padding: '9px 10px',
+            fontSize: 9,
+            gap: 5,
           }}
         >
-          <Icon color={ACCENT} name="sparkles" size={13} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 10, fontWeight: 650 }}>Reference sketch with GPT Image 2</span>
-            <span
-              style={{
-                color: 'var(--muted-foreground)',
-                fontSize: 9,
-                lineHeight: 1.4,
-              }}
-            >
-              Creates a 1:1 medium-quality reference and uses Pascal Studio credits. If a Pascal
-              File is selected, GPT Image 2 restyles it first.
-            </span>
-          </div>
+          <Icon name="joint" size={11} />
+          Name moving parts, hinges, sliders, and expected range of motion.
         </div>
       </Step>
 
@@ -1193,10 +1261,10 @@ function Generate() {
       </details>
 
       <button
-        disabled={submitting || !prompt.trim() || referenceRender?.status === 'pending'}
+        disabled={submitting || !prompt.trim() || generatingReference}
         style={{
           ...primaryButton,
-          opacity: submitting || !prompt.trim() || referenceRender?.status === 'pending' ? 0.48 : 1,
+          opacity: submitting || !prompt.trim() || generatingReference ? 0.48 : 1,
         }}
         type="submit"
       >
@@ -1257,6 +1325,45 @@ function Step({
   )
 }
 
+function ReferenceProviderButton({
+  active,
+  detail,
+  label,
+  onClick,
+}: {
+  active: boolean
+  detail: string
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      aria-pressed={active}
+      onClick={onClick}
+      style={{
+        alignItems: 'flex-start',
+        background: active
+          ? 'color-mix(in srgb, #ff6b3d 12%, var(--background))'
+          : 'var(--background)',
+        border: `1px solid ${active ? ACCENT : 'var(--border)'}`,
+        borderRadius: 999,
+        color: active ? ACCENT : 'var(--foreground)',
+        cursor: 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1,
+        minWidth: 0,
+        padding: '7px 10px',
+        textAlign: 'left',
+      }}
+      type="button"
+    >
+      <span style={{ fontSize: 9, fontWeight: 700 }}>{label}</span>
+      <span style={{ color: 'var(--muted-foreground)', fontSize: 8 }}>{detail}</span>
+    </button>
+  )
+}
+
 function ReferenceAction({
   active = false,
   disabled = false,
@@ -1280,7 +1387,7 @@ function ReferenceAction({
           ? 'color-mix(in srgb, #ff6b3d 10%, var(--background))'
           : 'var(--background)',
         border: `1px solid ${active ? ACCENT : 'var(--border)'}`,
-        borderRadius: 9,
+        borderRadius: 999,
         color: active ? ACCENT : 'var(--foreground)',
         cursor: disabled ? 'default' : 'pointer',
         display: 'flex',

@@ -1,4 +1,5 @@
 import type { HandleDescriptor, NodeDefinition, ParametricDescriptor } from '@pascal-app/core'
+import { buildArticraftFloorplan } from './floorplan'
 import { ArticraftAssetNode } from './schema'
 
 type Definition = NodeDefinition<typeof ArticraftAssetNode> & Record<string, unknown>
@@ -102,6 +103,7 @@ export const articraftAssetDefinition: Definition = {
   },
   parametrics,
   handles: [rotateHandle],
+  floorplan: buildArticraftFloorplan,
   renderer: { kind: 'parametric', module: () => import('./renderer') },
   preview: () => import('./preview'),
   tool: () => import('./tool'),

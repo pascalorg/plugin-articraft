@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { isCatalogItem, parseCatalogResponse } from './api'
+import { isCatalogItem, parseCatalogResponse, parseReferenceRender } from './api'
 
 const item = {
   id: 'globe',
@@ -41,5 +41,32 @@ describe('Articraft API parsing', () => {
         total: 1,
       }),
     ).toThrow('invalid response')
+  })
+
+  test('requires generated references to be persisted as project files', () => {
+    expect(
+      parseReferenceRender({
+        id: 'asset_reference',
+        status: 'completed',
+        image_url: 'https://assets.example/reference.png',
+        provider: 'google',
+        model: 'gemini-3.1-flash-image',
+        project_image: {
+          id: 'asset_reference',
+          name: 'articraft-reference.png',
+          url: 'https://assets.example/reference.png',
+        },
+      }).projectImage.id,
+    ).toBe('asset_reference')
+
+    expect(() =>
+      parseReferenceRender({
+        id: 'orphaned-reference',
+        status: 'completed',
+        image_url: 'https://assets.example/reference.png',
+        provider: 'azure-openai',
+        model: 'gpt-image-2',
+      }),
+    ).toThrow('project file')
   })
 })

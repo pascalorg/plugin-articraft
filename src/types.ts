@@ -83,12 +83,15 @@ export type ArticraftProjectImage = {
   url: string
 }
 
+export type ArticraftReferenceProvider = 'azure-openai' | 'google'
+
 export type ArticraftReferenceRender = {
-  errorText?: string
   id: string
-  imageUrl?: string
-  queuePosition?: number | null
-  status: 'pending' | 'completed' | 'failed'
+  imageUrl: string
+  model: string
+  projectImage: ArticraftProjectImage
+  provider: ArticraftReferenceProvider
+  status: 'completed'
 }
 
 export type ArticraftGenerationStatus = 'queued' | 'running' | 'succeeded' | 'failed'
