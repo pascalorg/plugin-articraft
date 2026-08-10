@@ -1,6 +1,6 @@
 {
   "name": "@pascal-app/plugin-articraft",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Browse, generate, pose, and place Articraft articulated assets in Pascal Editor.",
   "type": "module",
   "main": "./src/index.ts",
