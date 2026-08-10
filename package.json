@@ -15,6 +15,7 @@
     "src",
     "HOST_INTEGRATION.md",
     "README.md",
+    "SECURITY.md",
     "LICENSE"
   ],
   "scripts": {

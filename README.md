@@ -1,9 +1,15 @@
 # Articraft for Pascal
 
-An external Pascal Editor plugin for articulated 3D assets. It can browse a
-Pascal-hosted mirror of Articraft-10K, place URDF assets as custom Pascal nodes,
-pose their revolute/continuous/prismatic joints, and submit prompt or reference-
-image jobs to a credentialed mini-articraft worker that returns posable USDZ.
+A standalone reference plugin showing how to integrate Articraft with Pascal
+Editor through the public Plugin API. It can browse a host-provided mirror of
+Articraft-10K, place URDF assets as custom Pascal nodes, pose their
+revolute/continuous/prismatic joints, and submit prompt or reference-image jobs
+to a credentialed mini-articraft worker that returns posable USDZ.
+
+This repository contains no private Pascal application source, deployment
+configuration, project data, provider accounts, or credentials. The browser
+plugin communicates only through the documented public plugin contracts and
+same-origin host routes described below.
 
 Placement previews use the same articulated URDF/USDZ hierarchy as committed
 nodes, with translucent non-interactive materials and live articulation. New
@@ -67,9 +73,10 @@ credentials. Hosts expose the same-origin broker described in
   It does not persist a provider key, worker bearer token, Supabase service-role
   key, or Pascal user identity.
 
-The plugin has no OAuth scopes or external account session. Report security or
-support issues through the repository's
-[GitHub issues](https://github.com/pascalorg/plugin-articraft/issues).
+The plugin has no OAuth scopes or external account session. Report suspected
+security issues privately by following [SECURITY.md](./SECURITY.md); use
+[GitHub issues](https://github.com/pascalorg/plugin-articraft/issues) for public
+support requests.
 
 ## Development
 
@@ -87,10 +94,9 @@ uv run pytest
 Read [Create a plugin](https://editor.pascal.app/docs/developers/plugins) for
 Pascal's public Plugin API v1 contract.
 
-Pascal currently consumes the reviewed Git commit and transpiles the raw
-TypeScript entrypoint, matching the Nature reference plugin. `bun run build`
-emits a code-split ESM review artifact under ignored `dist/`; no install-time
-script or network request is required.
+Hosts consuming the reviewed Git source must transpile the raw TypeScript
+entrypoint. `bun run build` emits a code-split ESM review artifact under ignored
+`dist/`; no install-time script or network request is required.
 
 ## Upstream and data attribution
 
