@@ -14,6 +14,7 @@ export function catalogNode(item: ArticraftCatalogItem, position: Vec3): Articra
     artifact: item.artifact,
     thumbnailUrl: item.thumbnailUrl,
     dimensions: item.dimensions,
+    offset: item.offset,
     parts: item.parts,
     joints: item.joints,
     jointValues: item.defaultJointValues,

@@ -183,7 +183,13 @@ export function ArticraftVisual({
 
   useEffect(() => () => fallbackMaterial.dispose(), [fallbackMaterial])
 
-  if (loaded) return <primitive object={loaded.root} />
+  if (loaded) {
+    return (
+      <group position={node.offset}>
+        <primitive object={loaded.root} />
+      </group>
+    )
+  }
 
   return (
     <mesh
