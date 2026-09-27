@@ -37,7 +37,12 @@ export function buildUsdHierarchy(
     return { root: source, setJointValue: () => undefined }
   }
 
+  // The loader turns the stage's Z up to Y up and applies metersPerUnit on the
+  // group it returns; the rebuilt tree keeps that frame.
   const root = new Group()
+  root.position.copy(source.position)
+  root.quaternion.copy(source.quaternion)
+  root.scale.copy(source.scale)
   const motionGroups = new Map<string, { group: Group; joint: ArticraftJoint }>()
   const children = new Set<string>()
 
@@ -47,7 +52,8 @@ export function buildUsdHierarchy(
     if (!(parent && child)) continue
     const frame = new Group()
     frame.position.fromArray(joint.origin.xyz)
-    frame.rotation.set(...joint.origin.rpy, 'XYZ')
+    // URDF roll, pitch, yaw are fixed-axis: R = Rz(yaw) · Ry(pitch) · Rx(roll).
+    frame.rotation.set(...joint.origin.rpy, 'ZYX')
     const motion = new Group()
     if (joint.type !== 'fixed') markArticraftJointTarget(motion, joint.name)
     frame.add(motion)

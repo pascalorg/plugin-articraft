@@ -14,7 +14,8 @@ export function catalogNode(item: ArticraftCatalogItem, position: Vec3): Articra
     artifact: item.artifact,
     thumbnailUrl: item.thumbnailUrl,
     dimensions: item.dimensions,
-    offset: item.offset,
+    // A worker that could not measure its stage reports null.
+    offset: item.offset ?? undefined,
     parts: item.parts,
     joints: item.joints,
     jointValues: item.defaultJointValues,

@@ -45,5 +45,7 @@ describe('placing a catalog asset', () => {
     expect(node.dimensions).toEqual([0.3, 0.6, 0.3])
     expect(node.offset).toEqual([0.01, 0.12, -0.02])
     expect(catalogNode(item, [0, 0, 0]).offset).toBeUndefined()
+    const unmeasured = { ...item, offset: null } as unknown as ArticraftCatalogItem
+    expect(catalogNode(unmeasured, [0, 0, 0]).offset).toBeUndefined()
   })
 })

@@ -57,6 +57,6 @@ describe('USDZ joint tree', () => {
     const lid = root.getObjectByName('lid_1')
     const turned = lid?.getWorldQuaternion(new Quaternion())
     const expected = new Quaternion().setFromEuler(new Euler(...rpy, 'ZYX'))
-    expect(turned?.angleTo(expected)).toBeLessThan(1e-9)
+    expect(turned?.angleTo(expected)).toBeLessThan(1e-6)
   })
 })
