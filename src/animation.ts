@@ -6,12 +6,11 @@ import {
   Vector3,
   VectorKeyframeTrack,
 } from 'three'
-import { motionValueAtTime } from './motion'
+import { MOTION_PERIOD_SECONDS, motionValueAtTime } from './motion'
 import type { ArticraftAssetNode } from './schema'
 import type { ArticraftJoint } from './types'
 
 const JOINT_TARGET_KEY = '__articraftJointTarget'
-const MOTION_DURATION_SECONDS = (Math.PI * 2) / 1.4
 const MOTION_SAMPLES = 32
 
 type JointTargetMarker = {
@@ -36,7 +35,7 @@ export function bakeArticraftAnimation(
   const tracks = [] as Array<QuaternionKeyframeTrack | VectorKeyframeTrack>
   const times = Array.from(
     { length: MOTION_SAMPLES + 1 },
-    (_, step) => (step / MOTION_SAMPLES) * MOTION_DURATION_SECONDS,
+    (_, step) => (step / MOTION_SAMPLES) * MOTION_PERIOD_SECONDS,
   )
   let motionIndex = 0
 
@@ -66,7 +65,7 @@ export function bakeArticraftAnimation(
   }
 
   if (tracks.length === 0) return null
-  const clip = new AnimationClip(`${node.id}: loop`, MOTION_DURATION_SECONDS, tracks)
+  const clip = new AnimationClip(`${node.id}: loop`, MOTION_PERIOD_SECONDS, tracks)
   clip.userData = { loop: true }
   return clip
 }

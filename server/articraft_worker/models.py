@@ -49,6 +49,7 @@ class CatalogItem(BaseModel):
     source: Literal["generated"] = "generated"
     artifact: Artifact
     dimensions: tuple[float, float, float]
+    offset: tuple[float, float, float] | None = None
     parts: list[Part]
     joints: list[Joint]
     defaultJointValues: dict[str, float]

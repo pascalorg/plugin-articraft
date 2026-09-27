@@ -3,6 +3,11 @@ import type { Object3D } from 'three'
 import { bakeArticraftAnimation } from './animation'
 import { ARTICRAFT_ICON } from './brand'
 import { buildArticraftFloorplan } from './floorplan'
+import {
+  articraftMotionPlaying,
+  hostMechanismsOf,
+  setArticraftMotionPlaying,
+} from './motion-state'
 import { ArticraftAssetNode } from './schema'
 
 type Definition = NodeDefinition<typeof ArticraftAssetNode> & Record<string, unknown>
@@ -20,6 +25,32 @@ const floorPlacement = {
     }
   },
   collides: false,
+}
+
+function movableArticraft(node: unknown): node is ArticraftAssetNode {
+  const value = node as Partial<ArticraftAssetNode> | null
+  return (
+    value?.type === 'articraft:asset' &&
+    Array.isArray(value.joints) &&
+    value.joints.some((joint) => joint.type !== 'fixed')
+  )
+}
+
+/**
+ * Pascal's `capabilities.mechanism`: the host's Play/Stop, E key, walkthrough
+ * and baked viewer run an asset's joints through it. Hosts without the
+ * capability ignore it.
+ */
+const mechanism = {
+  has: (node: unknown) => movableArticraft(node),
+  isOn: (node: { id: string }, state: object) => {
+    const host = hostMechanismsOf(state)
+    return typeof host.setMechanism === 'function'
+      ? host.mechanisms?.[node.id] === true
+      : articraftMotionPlaying(node.id)
+  },
+  set: (node: { id: string }, on: boolean) => setArticraftMotionPlaying(node.id, on),
+  verb: 'run' as const,
 }
 
 const rotateHandle: HandleDescriptor<ArticraftAssetNode> = {
@@ -74,7 +105,6 @@ export const articraftAssetDefinition: Definition = {
     parts: [],
     joints: [],
     jointValues: {},
-    motionEnabled: false,
     attribution: {
       creator: 'Articraft authors',
       license: 'CC-BY-4.0',
@@ -82,6 +112,8 @@ export const articraftAssetDefinition: Definition = {
     },
   }),
   capabilities: {
+    // Spread, not written inline: hosts before the capability do not know the key.
+    ...{ mechanism },
     movable: { axes: ['x', 'z'], gridSnap: true },
     rotatable: {
       axes: ['y'],
@@ -125,6 +157,6 @@ export const articraftAssetDefinition: Definition = {
   },
   mcp: {
     description:
-      'A poseable Articraft asset. Stores an immutable artifact, rigid-part joint graph, per-joint revolute/continuous/prismatic pose values, and persistent motion state.',
+      'A poseable Articraft asset. Stores an immutable artifact, rigid-part joint graph and per-joint revolute/continuous/prismatic rest pose values. Playing its motion is transient and never saved.',
   },
 }

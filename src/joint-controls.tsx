@@ -5,6 +5,7 @@ import { PanelSection, SliderControl } from '@pascal-app/editor'
 import { useViewer } from '@pascal-app/viewer'
 import { useMemo } from 'react'
 import { usePrefersReducedMotion } from './motion'
+import { setArticraftMotionPlaying, useArticraftMotionPlaying } from './motion-state'
 import type { ArticraftAssetNode } from './schema'
 import type { ArticraftJoint } from './types'
 
@@ -18,6 +19,7 @@ export default function ArticraftJointControls() {
       ? (value as unknown as ArticraftAssetNode)
       : null
   })
+  const playing = useArticraftMotionPlaying(node?.id)
   const reducedMotion = usePrefersReducedMotion()
   const movable = useMemo(
     () => node?.joints.filter((joint) => joint.type !== 'fixed') ?? [],
@@ -26,27 +28,20 @@ export default function ArticraftJointControls() {
 
   if (!node) return null
 
-  const setMotionEnabled = (motionEnabled: boolean) => {
-    useScene.getState().updateNode(node.id as AnyNodeId, { motionEnabled } as never)
-  }
-
+  // Posing a joint stops playback so the pose being edited is the one shown.
   const setJoint = (joint: ArticraftJoint, value: number) => {
+    setArticraftMotionPlaying(node.id, false)
     useScene.getState().updateNode(
       node.id as AnyNodeId,
-      {
-        motionEnabled: false,
-        jointValues: { ...node.jointValues, [joint.name]: value },
-      } as never,
+      { jointValues: { ...node.jointValues, [joint.name]: value } } as never,
     )
   }
 
   const reset = () => {
+    setArticraftMotionPlaying(node.id, false)
     useScene.getState().updateNode(
       node.id as AnyNodeId,
-      {
-        motionEnabled: false,
-        jointValues: Object.fromEntries(movable.map((joint) => [joint.name, 0])),
-      } as never,
+      { jointValues: Object.fromEntries(movable.map((joint) => [joint.name, 0])) } as never,
     )
   }
 
@@ -73,7 +68,6 @@ export default function ArticraftJointControls() {
           min={0.05}
           onChange={setScale}
           precision={2}
-          restoreOnCommit={false}
           step={0.05}
           value={node.scale}
         />
@@ -85,7 +79,6 @@ export default function ArticraftJointControls() {
             min={-100}
             onChange={(value) => setVector('position', index, value)}
             precision={2}
-            restoreOnCommit={false}
             step={0.05}
             unit="m"
             value={node.position[index]}
@@ -99,7 +92,6 @@ export default function ArticraftJointControls() {
             min={-180}
             onChange={(value) => setVector('rotation', index, value)}
             precision={1}
-            restoreOnCommit={false}
             step={1}
             unit="°"
             value={toDegrees(node.rotation[index])}
@@ -126,7 +118,6 @@ export default function ArticraftJointControls() {
                 min={displayRange[0]}
                 onChange={(value) => setJoint(joint, angular ? toRadians(value) : value)}
                 precision={angular ? 1 : 3}
-                restoreOnCommit={false}
                 step={angular ? 1 : 0.001}
                 unit={angular ? '°' : 'm'}
                 value={angular
@@ -139,15 +130,15 @@ export default function ArticraftJointControls() {
         {movable.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
             <button
-              aria-pressed={node.motionEnabled && !reducedMotion}
+              aria-pressed={playing && !reducedMotion}
               disabled={reducedMotion}
-              onClick={() => setMotionEnabled(!node.motionEnabled)}
-              style={buttonStyle(node.motionEnabled && !reducedMotion, reducedMotion)}
+              onClick={() => setArticraftMotionPlaying(node.id, !playing)}
+              style={buttonStyle(playing && !reducedMotion, reducedMotion)}
               type="button"
             >
               {reducedMotion
                 ? 'Motion reduced'
-                : node.motionEnabled
+                : playing
                   ? 'Stop motion'
                   : 'Start motion'}
             </button>
