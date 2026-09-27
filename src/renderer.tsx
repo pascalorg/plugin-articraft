@@ -29,6 +29,7 @@ import URDFLoader from 'urdf-loader'
 import { markArticraftJointTarget } from './animation'
 import { createArticraftAppearanceController } from './appearance'
 import { motionValueAtTime, usePrefersReducedMotion } from './motion'
+import { setArticraftMotionPlaying, useArticraftMotion } from './motion-state'
 import type { ArticraftAssetNode } from './schema'
 import { resolveArticraftRootTransform } from './transform'
 import type { ArticraftJoint } from './types'
@@ -49,6 +50,8 @@ export default function ArticraftRenderer({ node }: { node: ArticraftAssetNode }
   const liveOverride = useLiveNodeOverrides((state) => state.overrides.get(node.id))
   const transform = resolveArticraftRootTransform(node, liveTransform, liveOverride)
   useRegistry(node.id, node.type, ref as React.RefObject<Object3D>)
+  // Playback is transient: it ends with the asset rather than outliving it.
+  useEffect(() => () => setArticraftMotionPlaying(node.id, false), [node.id])
 
   return (
     <group
@@ -66,11 +69,9 @@ export default function ArticraftRenderer({ node }: { node: ArticraftAssetNode }
 
 export function ArticraftVisual({
   ghost = false,
-  motionEnabled,
   node,
 }: {
   ghost?: boolean
-  motionEnabled?: boolean
   node: ArticraftAssetNode
 }) {
   const [loaded, setLoaded] = useState<LoadedArticulation | null>(null)
@@ -81,8 +82,9 @@ export function ArticraftVisual({
   const textures = useViewer((state) => state.textures)
   const colorPreset = useViewer((state) => state.colorPreset)
   const sceneTheme = useViewer((state) => state.sceneTheme)
+  const playing = useArticraftMotion((state) => !ghost && state.playing[node.id] === true)
   const shouldAnimate =
-    (motionEnabled ?? node.motionEnabled) &&
+    playing &&
     !reducedMotion &&
     node.joints.some((joint) => joint.type !== 'fixed')
 
@@ -141,13 +143,14 @@ export function ArticraftVisual({
     invalidate()
   }, [colorPreset, ghost, invalidate, loaded, sceneTheme, shading, textures])
 
+  // The rest pose, and where every joint returns when playback stops.
   useEffect(() => {
-    if (!loaded) return
-    for (const [name, value] of Object.entries(node.jointValues)) {
-      loaded.setJointValue(name, value)
+    if (!loaded || shouldAnimate) return
+    for (const joint of node.joints) {
+      if (joint.type !== 'fixed') loaded.setJointValue(joint.name, node.jointValues[joint.name] ?? 0)
     }
     invalidate()
-  }, [invalidate, loaded, node.jointValues, shouldAnimate])
+  }, [invalidate, loaded, node.jointValues, node.joints, shouldAnimate])
 
   useFrame((state) => {
     if (!(loaded && shouldAnimate)) return
@@ -180,7 +183,13 @@ export function ArticraftVisual({
 
   useEffect(() => () => fallbackMaterial.dispose(), [fallbackMaterial])
 
-  if (loaded) return <primitive object={loaded.root} />
+  if (loaded) {
+    return (
+      <group position={node.offset}>
+        <primitive object={loaded.root} />
+      </group>
+    )
+  }
 
   return (
     <mesh
