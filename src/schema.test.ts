@@ -26,7 +26,6 @@ describe('Articraft asset schema', () => {
         },
       ],
       jointValues: { globe_spin: 1.25 },
-      motionEnabled: true,
       attribution: {
         creator: 'Articraft authors',
         license: 'CC-BY-4.0',

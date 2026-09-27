@@ -31,7 +31,6 @@ const node = {
     },
   ],
   jointValues: {},
-  motionEnabled: false,
   attribution: { creator: 'Articraft authors', license: 'CC-BY-4.0', sourceUrl: 'https://x.test' },
 }
 const sliders: Array<{ label: string; restoreOnCommit: unknown }> = []

@@ -14,11 +14,11 @@ plugin communicates only through the documented public plugin contracts and
 same-origin host routes described below.
 
 Placement previews use the same articulated URDF/USDZ hierarchy as committed
-nodes, with translucent non-interactive materials and live articulation. New
-placements keep that motion active after commit and after selection changes.
-The inspector can stop or restart motion without writing per-frame joint values
-into scene history or autosave. Automatic motion is paused when the operating
-system requests reduced motion.
+nodes, with translucent non-interactive materials, shown in their rest pose.
+Placed assets start still. The inspector starts and stops their motion; playing
+is transient, like Pascal's own mechanisms: it is never written to the scene,
+scene history, autosave or collaboration, and a reload shows the saved rest
+pose. Motion is paused when the operating system requests reduced motion.
 
 This is a Pascal integration maintained by `pascalorg`. It is not an official
 hosted service from the Articraft researchers.
@@ -40,8 +40,8 @@ hosted service from the Articraft researchers.
   without plugin-specific quality toggles.
 - Live position, rotation, scale, and joint controls in the Pascal inspector;
   radians stay radians in scene data and are displayed as degrees only for people.
-- Persistent, selection-independent motion that smoothly sweeps every movable
-  joint while keeping per-frame values transient.
+- Transient, selection-independent motion: limited joints sweep their range and
+  continuous joints turn.
 - Native looping glTF animation clips for those articulated joints when a Pascal
   project is exported to GLB; the saved joint pose remains the file's rest pose.
 - A registry-native 2D footprint that follows each asset's persisted position,
@@ -71,7 +71,8 @@ credentials. Hosts expose the same-origin broker described in
   provider may retain inputs under its own policy.
 - A placed Pascal node persists the catalog or generated artifact URL and
   digest, title, source attribution, optional generation prompt, dimensions,
-  part/joint graph, transform, current joint pose, and whether motion is enabled.
+  part/joint graph, transform and rest joint pose. Whether motion is playing is
+  not saved.
   It does not persist a provider key, worker bearer token, Supabase service-role
   key, or Pascal user identity.
 
