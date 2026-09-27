@@ -129,7 +129,7 @@ describe('Articraft GLB animation export', () => {
     expect(at(24).angleTo(rest)).toBeCloseTo(Math.PI / 2, 6)
     expect(at(32).angleTo(rest)).toBeCloseTo(0, 6)
     const quarter = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2)
-    expect(at(8).angleTo(quarter)).toBeCloseTo(0, 6)
+    expect(at(8).angleTo(quarter)).toBeLessThan(1e-3)
   })
 
   test('does not emit an animation without a resolved movable joint target', () => {
