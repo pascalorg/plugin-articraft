@@ -41,7 +41,9 @@ hosted service from the Articraft researchers.
 - Live position, rotation, scale, and joint controls in the Pascal inspector;
   radians stay radians in scene data and are displayed as degrees only for people.
 - Transient, selection-independent motion: limited joints sweep their range and
-  continuous joints turn.
+  continuous joints turn. On Pascal hosts with `capabilities.mechanism`, the
+  shared Play/Stop button, the E key, the walkthrough and the baked viewer run it
+  too, through the host's transient `useInteractive.mechanisms`.
 - Native looping glTF animation clips for those articulated joints when a Pascal
   project is exported to GLB; the saved joint pose remains the file's rest pose.
 - A registry-native 2D footprint that follows each asset's persisted position,

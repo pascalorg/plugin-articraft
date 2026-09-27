@@ -22,7 +22,7 @@ import URDFLoader from 'urdf-loader'
 import { markArticraftJointTarget } from './animation'
 import { createArticraftAppearanceController } from './appearance'
 import { motionValueAtTime, usePrefersReducedMotion } from './motion'
-import { setArticraftMotionPlaying, useArticraftMotion } from './motion-state'
+import { setArticraftMotionPlaying, useArticraftMotionPlaying } from './motion-state'
 import type { ArticraftAssetNode } from './schema'
 import { resolveArticraftRootTransform } from './transform'
 import { buildUsdHierarchy, type LoadedArticulationSource } from './usd-hierarchy'
@@ -70,7 +70,7 @@ export function ArticraftVisual({
   const textures = useViewer((state) => state.textures)
   const colorPreset = useViewer((state) => state.colorPreset)
   const sceneTheme = useViewer((state) => state.sceneTheme)
-  const playing = useArticraftMotion((state) => !ghost && state.playing[node.id] === true)
+  const playing = useArticraftMotionPlaying(ghost ? undefined : node.id)
   const shouldAnimate =
     playing &&
     !reducedMotion &&

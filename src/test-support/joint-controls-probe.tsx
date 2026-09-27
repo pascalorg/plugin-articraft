@@ -38,6 +38,9 @@ const state = { nodes: { [NODE_ID]: node }, updateNode: () => undefined }
 
 stubHostModules({
   '@pascal-app/core': {
+    useInteractive: Object.assign((select: (value: object) => unknown) => select({}), {
+      getState: () => ({}),
+    }),
     useScene: Object.assign((select: (value: typeof state) => unknown) => select(state), {
       getState: () => state,
     }),

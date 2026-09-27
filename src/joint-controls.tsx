@@ -5,7 +5,7 @@ import { PanelSection, SliderControl } from '@pascal-app/editor'
 import { useViewer } from '@pascal-app/viewer'
 import { useMemo } from 'react'
 import { usePrefersReducedMotion } from './motion'
-import { setArticraftMotionPlaying, useArticraftMotion } from './motion-state'
+import { setArticraftMotionPlaying, useArticraftMotionPlaying } from './motion-state'
 import type { ArticraftAssetNode } from './schema'
 import type { ArticraftJoint } from './types'
 
@@ -19,9 +19,7 @@ export default function ArticraftJointControls() {
       ? (value as unknown as ArticraftAssetNode)
       : null
   })
-  const playing = useArticraftMotion((state) =>
-    node ? state.playing[node.id] === true : false,
-  )
+  const playing = useArticraftMotionPlaying(node?.id)
   const reducedMotion = usePrefersReducedMotion()
   const movable = useMemo(
     () => node?.joints.filter((joint) => joint.type !== 'fixed') ?? [],
