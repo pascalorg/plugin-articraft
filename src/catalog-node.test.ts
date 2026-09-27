@@ -39,4 +39,11 @@ describe('placing a catalog asset', () => {
     })
     expect(Object.hasOwn(node, 'motionEnabled')).toBe(false)
   })
+
+  test('keeps the catalog footprint and the offset that stands it on the floor', () => {
+    const node = catalogNode({ ...item, offset: [0.01, 0.12, -0.02] }, [0, 0, 0])
+    expect(node.dimensions).toEqual([0.3, 0.6, 0.3])
+    expect(node.offset).toEqual([0.01, 0.12, -0.02])
+    expect(catalogNode(item, [0, 0, 0]).offset).toBeUndefined()
+  })
 })
