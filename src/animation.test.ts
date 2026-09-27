@@ -89,6 +89,49 @@ describe('Articraft GLB animation export', () => {
     expect(fixedTarget.position.toArray()).toEqual([0, 0, 0])
   })
 
+  test('bakes a continuous joint as a full turn over the loop, seamless at the seam', () => {
+    const root = new Group()
+    const wheelTarget = new Group()
+    markArticraftJointTarget(wheelTarget, 'wheel_spin')
+    root.add(wheelTarget)
+    const node = ArticraftAssetNode.parse({
+      id: 'articraft_spin_test',
+      catalogId: 'spin-test',
+      title: 'Spin test',
+      source: 'generated',
+      artifact: { format: 'usdz', url: 'https://assets.example/model.usdz' },
+      joints: [
+        {
+          name: 'wheel_spin',
+          type: 'continuous',
+          parent: 'base',
+          child: 'wheel',
+          axis: [0, 1, 0],
+          origin: { xyz: [0, 0, 0], rpy: [0, 0, 0] },
+          limits: null,
+        },
+      ],
+      attribution: {
+        creator: 'Articraft authors',
+        license: 'CC-BY-4.0',
+        sourceUrl: 'https://example.com/source',
+      },
+    })
+
+    const track = bakeArticraftAnimation(node, root)?.tracks[0]
+    expect(track?.ValueTypeName).toBe('quaternion')
+    const rest = new Quaternion()
+    const at = (sample: number) =>
+      new Quaternion().fromArray(Array.from(track?.values.slice(sample * 4, sample * 4 + 4) ?? []))
+    // 32 samples per loop: a quarter loop is a quarter turn, half a loop half a turn.
+    expect(at(8).angleTo(rest)).toBeCloseTo(Math.PI / 2, 6)
+    expect(at(16).angleTo(rest)).toBeCloseTo(Math.PI, 6)
+    expect(at(24).angleTo(rest)).toBeCloseTo(Math.PI / 2, 6)
+    expect(at(32).angleTo(rest)).toBeCloseTo(0, 6)
+    const quarter = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2)
+    expect(at(8).angleTo(quarter)).toBeLessThan(1e-3)
+  })
+
   test('does not emit an animation without a resolved movable joint target', () => {
     const node = ArticraftAssetNode.parse({
       id: 'articraft_static_test',

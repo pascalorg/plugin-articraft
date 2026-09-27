@@ -39,6 +39,11 @@ export function usePrefersReducedMotion(): boolean {
   )
 }
 
+/** Motion rate in radians per second: the sweep's angular frequency, and how fast continuous joints turn. */
+export const MOTION_RATE = 1.4
+/** One sweep of the limited joints, and one full turn of the continuous ones. */
+export const MOTION_PERIOD_SECONDS = (Math.PI * 2) / MOTION_RATE
+
 export function motionRange(joint: ArticraftJoint): [number, number] {
   if (joint.limits && joint.limits.upper > joint.limits.lower) {
     return [joint.limits.lower, joint.limits.upper]
@@ -51,6 +56,8 @@ export function motionValueAtTime(
   index: number,
   elapsedSeconds: number,
 ): number {
+  // A wheel, fan or knob turns without end; sweeping it back and forth over ±π rocks it instead.
+  if (joint.type === 'continuous') return elapsedSeconds * MOTION_RATE
   const hasLimits = joint.limits && joint.limits.upper > joint.limits.lower
   const lower = hasLimits
     ? joint.limits!.lower
@@ -62,6 +69,6 @@ export function motionValueAtTime(
     : joint.type === 'prismatic'
       ? 1
       : Math.PI
-  const progress = (Math.sin(elapsedSeconds * 1.4 + index * 0.7) + 1) / 2
+  const progress = (Math.sin(elapsedSeconds * MOTION_RATE + index * 0.7) + 1) / 2
   return lower + (upper - lower) * progress
 }

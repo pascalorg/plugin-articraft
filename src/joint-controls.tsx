@@ -73,7 +73,6 @@ export default function ArticraftJointControls() {
           min={0.05}
           onChange={setScale}
           precision={2}
-          restoreOnCommit={false}
           step={0.05}
           value={node.scale}
         />
@@ -85,7 +84,6 @@ export default function ArticraftJointControls() {
             min={-100}
             onChange={(value) => setVector('position', index, value)}
             precision={2}
-            restoreOnCommit={false}
             step={0.05}
             unit="m"
             value={node.position[index]}
@@ -99,7 +97,6 @@ export default function ArticraftJointControls() {
             min={-180}
             onChange={(value) => setVector('rotation', index, value)}
             precision={1}
-            restoreOnCommit={false}
             step={1}
             unit="°"
             value={toDegrees(node.rotation[index])}
@@ -126,7 +123,6 @@ export default function ArticraftJointControls() {
                 min={displayRange[0]}
                 onChange={(value) => setJoint(joint, angular ? toRadians(value) : value)}
                 precision={angular ? 1 : 3}
-                restoreOnCommit={false}
                 step={angular ? 1 : 0.001}
                 unit={angular ? '°' : 'm'}
                 value={angular
