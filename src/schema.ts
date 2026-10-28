@@ -38,6 +38,8 @@ export const ArticraftAssetNode = BaseNode.extend({
   }),
   thumbnailUrl: z.string().url().optional(),
   dimensions: Vec3.default([1, 1, 1]),
+  /** Moves the loaded asset so its rest pose stands on its bottom centre at the node origin. */
+  offset: Vec3.optional(),
   parts: z
     .array(
       z.object({

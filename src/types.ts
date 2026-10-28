@@ -57,7 +57,13 @@ export type ArticraftCatalogItem = {
   source: ArticraftSource
   artifact: ArticraftArtifact
   thumbnailUrl?: string
+  /** Rest-pose size in Pascal's frame (Y up, metres). */
   dimensions: Vec3
+  /**
+   * Moves the loaded asset so its rest pose stands on its bottom centre at the
+   * node origin (`bottomCentreFrame`). Absent in records synced before it existed.
+   */
+  offset?: Vec3
   parts: ArticraftPart[]
   joints: ArticraftJoint[]
   defaultJointValues: Record<string, number>
