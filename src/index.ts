@@ -27,6 +27,8 @@ export const articraftHostPanel: EditorHostPanel = {
 }
 
 export { ARTICRAFT_API_BASE, fetchCatalog } from './api'
+export { bottomCentreFrame, objExtent, urdfRestBounds } from './bounds'
+export type { Bounds, MeshExtent } from './bounds'
 export { articraftAssetDefinition } from './definition'
 export { ArticraftAssetNode } from './schema'
 export type {

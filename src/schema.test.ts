@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { ArticraftAssetNode } from './schema'
+import { ArticraftAssetNode } from './index'
 
 describe('Articraft asset schema', () => {
   test('persists an immutable artifact and joint pose', () => {
@@ -38,6 +38,11 @@ describe('Articraft asset schema', () => {
     expect(node.jointValues.globe_spin).toBe(1.25)
     expect(node.motionEnabled).toBe(true)
     expect(node.artifact.sha256).toBe('a'.repeat(64))
+    const placed = ArticraftAssetNode.parse({ ...node, offset: [0.01, 0.12, -0.02] })
+    const reopened = ArticraftAssetNode.parse(JSON.parse(JSON.stringify(placed)))
+    expect(reopened).toEqual(placed)
+    expect(reopened.offset).toEqual([0.01, 0.12, -0.02])
+    expect(reopened.motionEnabled).toBe(true)
   })
 
   test('keeps older nodes still until motion is explicitly enabled', () => {
@@ -54,5 +59,6 @@ describe('Articraft asset schema', () => {
     })
 
     expect(node.motionEnabled).toBe(false)
+    expect(node.offset).toBeUndefined()
   })
 })

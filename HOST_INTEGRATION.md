@@ -46,7 +46,14 @@ GET  /api/plugins/articraft/generations/:jobId
 POST /api/plugins/articraft/generations/:jobId/cancel
 ```
 
-Catalog responses use `ArticraftCatalogResponse`. Generation creation accepts
+Catalog responses use `ArticraftCatalogResponse`. Each item's `dimensions` is its
+rest-pose size in Pascal's frame (Y up, metres) and its optional `offset` stands
+the asset on its bottom centre at the node origin; placement copies both onto the
+node. A host that syncs a catalog computes them with `urdfRestBounds` (every
+visual through its link, joint and visual origins and mesh scale) and
+`bottomCentreFrame`, both exported by the package.
+
+Generation creation accepts
 multipart form data (`prompt`, optional `image`, optional `provider`, optional
 `model`) and returns `{ id, status }`. Configuration returns the worker-selected
 default plus its allowlisted `models`; OpenAI/GPT-5.6 remains selected when those
