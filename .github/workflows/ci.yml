@@ -37,6 +37,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run build
       - run: bun run check-types
+      - run: bun run check:render
       - run: bun test
 
   worker:
