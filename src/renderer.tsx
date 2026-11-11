@@ -6,9 +6,9 @@ import {
   useLiveTransforms,
   useRegistry,
 } from '@pascal-app/core'
-import { EDITOR_LAYER } from '@pascal-app/editor'
 import {
   createDefaultMaterial,
+  OVERLAY_LAYER,
   resolveSurfaceColor,
   useNodeEvents,
   useViewer,
@@ -190,7 +190,7 @@ export function ArticraftVisual({
 
   return (
     <mesh
-      layers={ghost ? EDITOR_LAYER : undefined}
+      layers={ghost ? OVERLAY_LAYER : undefined}
       position={[0, node.dimensions[1] / 2, 0]}
       raycast={ghost ? () => undefined : undefined}
     >
@@ -324,9 +324,10 @@ function markShadows(root: Object3D) {
   })
 }
 
+// Viewer's OVERLAY_LAYER is the same layer the editor exports as EDITOR_LAYER.
 function configureGhost(root: Object3D) {
   root.traverse((object) => {
-    object.layers.set(EDITOR_LAYER)
+    object.layers.set(OVERLAY_LAYER)
     object.raycast = () => undefined
     const mesh = object as Mesh
     if (!mesh.isMesh) return

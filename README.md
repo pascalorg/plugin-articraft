@@ -54,6 +54,25 @@ The browser package never receives provider, worker, or Supabase service-role
 credentials. Hosts expose the same-origin broker described in
 [HOST_INTEGRATION.md](./HOST_INTEGRATION.md).
 
+## Read-only viewers
+
+A viewer that only displays scenes can load the render-only entry instead of the
+root plugin. It registers the same `pascal:articraft` id, `articraft:asset` kind,
+schema and defaults, plus the renderer, floor plan and GLB export
+animation, without importing `@pascal-app/editor`:
+
+```ts
+import { loadPlugin } from '@pascal-app/core'
+import { articraftRenderPlugin } from '@pascal-app/plugin-articraft/render'
+
+await loadPlugin(articraftRenderPlugin)
+```
+
+The root `articraftPlugin` composes the same render definition with the editor
+parameters, rotate handle, placement tool and preview, so existing hosts are
+unchanged. `bun run check:render` bundles `./render` and fails if anything on its
+graph resolves to `@pascal-app/editor` or `next`.
+
 ## Data and service boundaries
 
 - Browsing calls the Pascal host's same-origin catalog route, then downloads
@@ -86,6 +105,7 @@ support requests.
 bun install
 bun run build
 bun run check-types
+bun run check:render
 bun test
 
 cd server
